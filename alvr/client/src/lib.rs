@@ -21,8 +21,10 @@ use alvr_sockets::{
     PrivateIdentity, TimeSyncPacket, ViewsConfig,
 };
 use jni::{
-    objects::{JClass, JObject, JString},
-    JNIEnv,
+    errors::ThrowRuntimeExAndDefault,
+    jni_sig, jni_str,
+    objects::{Global, JClass, JObject, JString, JValue},
+    EnvUnowned,
 };
 use parking_lot::Mutex;
 use std::{
@@ -56,7 +58,7 @@ lazy_static! {
 
 #[no_mangle]
 pub extern "system" fn Java_com_polygraphene_alvr_OvrActivity_initNativeLogging(
-    _: JNIEnv,
+    _: EnvUnowned,
     _: JClass,
 ) {
     logging_backend::init_logging();
@@ -64,27 +66,46 @@ pub extern "system" fn Java_com_polygraphene_alvr_OvrActivity_initNativeLogging(
 
 #[no_mangle]
 pub extern "system" fn Java_com_polygraphene_alvr_OvrActivity_createIdentity(
-    env: JNIEnv,
+    mut env: EnvUnowned,
     _: JClass,
     jidentity: JObject,
 ) {
-    alvr_common::show_err(|| -> StrResult {
-        let identity = alvr_sockets::create_identity(None)?;
+    env.with_env(|env| -> jni::errors::Result<()> {
+        alvr_common::show_err(|| -> StrResult {
+            let identity = alvr_sockets::create_identity(None)?;
 
-        let jhostname = trace_err!(env.new_string(identity.hostname))?.into();
-        trace_err!(env.set_field(jidentity, "hostname", "Ljava/lang/String;", jhostname))?;
+            let jhostname = trace_err!(env.new_string(identity.hostname))?;
+            trace_err!(env.set_field(
+                &jidentity,
+                jni_str!("hostname"),
+                jni_sig!("Ljava/lang/String;"),
+                JValue::Object(&jhostname)
+            ))?;
 
-        let jcert_pem = trace_err!(env.new_string(identity.certificate_pem))?.into();
-        trace_err!(env.set_field(jidentity, "certificatePEM", "Ljava/lang/String;", jcert_pem))?;
+            let jcert_pem = trace_err!(env.new_string(identity.certificate_pem))?;
+            trace_err!(env.set_field(
+                &jidentity,
+                jni_str!("certificatePEM"),
+                jni_sig!("Ljava/lang/String;"),
+                JValue::Object(&jcert_pem)
+            ))?;
 
-        let jkey_pem = trace_err!(env.new_string(identity.key_pem))?.into();
-        trace_err!(env.set_field(jidentity, "privateKey", "Ljava/lang/String;", jkey_pem))
-    }());
+            let jkey_pem = trace_err!(env.new_string(identity.key_pem))?;
+            trace_err!(env.set_field(
+                &jidentity,
+                jni_str!("privateKey"),
+                jni_sig!("Ljava/lang/String;"),
+                JValue::Object(&jkey_pem)
+            ))
+        }());
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>();
 }
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_DecoderThread_DecoderInput(
-    _: JNIEnv,
+    _: EnvUnowned,
     _: JObject,
     frame_index: i64,
 ) {
@@ -93,7 +114,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_DecoderThread_DecoderIn
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_DecoderThread_DecoderOutput(
-    _: JNIEnv,
+    _: EnvUnowned,
     _: JObject,
     frame_index: i64,
 ) {
@@ -102,7 +123,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_DecoderThread_DecoderOu
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_DecoderThread_setWaitingNextIDR(
-    _: JNIEnv,
+    _: EnvUnowned,
     _: JObject,
     waiting: bool,
 ) {
@@ -111,7 +132,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_DecoderThread_setWaitin
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onCreateNative(
-    env: JNIEnv,
+    mut env: EnvUnowned,
     activity: JObject,
     asset_manager: JObject,
     jout_result: JObject,
@@ -354,41 +375,45 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onCreateNat
     viewsConfigSend = Some(views_config_send);
     batterySend = Some(battery_send);
 
-    alvr_common::show_err(|| -> StrResult {
-        let result = onCreate(
-            env.get_native_interface() as _,
-            *activity as _,
-            *asset_manager as _,
-        );
+    env.with_env(|env| -> jni::errors::Result<()> {
+        alvr_common::show_err(|| -> StrResult {
+            let result = onCreate(
+                env.get_raw() as _,
+                activity.as_raw() as _,
+                asset_manager.as_raw() as _,
+            );
 
-        trace_err!(env.set_field(
-            jout_result,
-            "streamSurfaceHandle",
-            "I",
-            result.streamSurfaceHandle.into()
-        ))?;
-        trace_err!(env.set_field(
-            jout_result,
-            "loadingSurfaceHandle",
-            "I",
-            result.loadingSurfaceHandle.into()
-        ))?;
+            trace_err!(env.set_field(
+                &jout_result,
+                jni_str!("streamSurfaceHandle"),
+                jni_sig!("I"),
+                JValue::Int(result.streamSurfaceHandle as _)
+            ))?;
+            trace_err!(env.set_field(
+                &jout_result,
+                jni_str!("loadingSurfaceHandle"),
+                jni_sig!("I"),
+                JValue::Int(result.loadingSurfaceHandle as _)
+            ))?;
 
+            Ok(())
+        }());
         Ok(())
-    }());
+    })
+    .resolve::<ThrowRuntimeExAndDefault>();
 }
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_destroyNative(
-    env: JNIEnv,
+    env: EnvUnowned,
     _: JObject,
 ) {
-    destroyNative(env.get_native_interface() as _)
+    destroyNative(env.as_raw() as _)
 }
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_renderNative(
-    _: JNIEnv,
+    _: EnvUnowned,
     _: JObject,
     rendered_frame_index: i64,
 ) {
@@ -397,7 +422,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_renderNativ
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_renderLoadingNative(
-    _: JNIEnv,
+    _: EnvUnowned,
     _: JObject,
 ) {
     renderLoadingNative()
@@ -405,7 +430,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_renderLoadi
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onResumeNative(
-    env: JNIEnv,
+    mut env: EnvUnowned,
     jactivity: JObject,
     nal_class: JClass,
     jhostname: JString,
@@ -414,68 +439,72 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onResumeNat
     jscreen_surface: JObject,
     dark_mode: u8,
 ) {
-    alvr_common::show_err(|| -> StrResult {
-        let java_vm = trace_err!(env.get_java_vm())?;
-        let activity_ref = trace_err!(env.new_global_ref(jactivity))?;
-        let nal_class_ref = trace_err!(env.new_global_ref(nal_class))?;
+    env.with_env(|env| -> jni::errors::Result<()> {
+        alvr_common::show_err(|| -> StrResult {
+            let java_vm = trace_err!(env.get_java_vm())?;
+            let activity_ref = trace_err!(env.new_global_ref(&jactivity))?;
+            let nal_class_ref = trace_err!(env.new_global_ref(&nal_class))?;
 
-        let result = onResumeNative(*jscreen_surface as _, dark_mode == 1);
+            let result = onResumeNative(jscreen_surface.as_raw() as _, dark_mode == 1);
 
-        let device_name = if result.deviceType == DeviceType_OCULUS_GO {
-            "Oculus Go"
-        } else if result.deviceType == DeviceType_OCULUS_QUEST {
-            "Oculus Quest"
-        } else if result.deviceType == DeviceType_OCULUS_QUEST_2 {
-            "Oculus Quest 2"
-        } else {
-            "Unknown device"
-        };
-
-        let available_refresh_rates =
-            slice::from_raw_parts(result.refreshRates, result.refreshRatesCount as _).to_vec();
-        let preferred_refresh_rate = available_refresh_rates.last().cloned().unwrap_or(60_f32);
-
-        let headset_info = HeadsetInfoPacket {
-            recommended_eye_width: result.recommendedEyeWidth as _,
-            recommended_eye_height: result.recommendedEyeHeight as _,
-            available_refresh_rates,
-            preferred_refresh_rate,
-            reserved: format!("{}", *ALVR_VERSION),
-        };
-
-        let private_identity = PrivateIdentity {
-            hostname: trace_err!(env.get_string(jhostname))?.into(),
-            certificate_pem: trace_err!(env.get_string(jcertificate_pem))?.into(),
-            key_pem: trace_err!(env.get_string(jprivate_key))?.into(),
-        };
-
-        let runtime = trace_err!(Runtime::new())?;
-
-        runtime.spawn(async move {
-            let connection_loop = connection::connection_lifecycle_loop(
-                headset_info,
-                device_name,
-                private_identity,
-                Arc::new(java_vm),
-                Arc::new(activity_ref),
-                Arc::new(nal_class_ref),
-            );
-
-            tokio::select! {
-                _ = connection_loop => (),
-                _ = ON_PAUSE_NOTIFIER.notified() => ()
+            let device_name = if result.deviceType == DeviceType_OCULUS_GO {
+                "Oculus Go"
+            } else if result.deviceType == DeviceType_OCULUS_QUEST {
+                "Oculus Quest"
+            } else if result.deviceType == DeviceType_OCULUS_QUEST_2 {
+                "Oculus Quest 2"
+            } else {
+                "Unknown device"
             };
-        });
 
-        *RUNTIME.lock() = Some(runtime);
+            let available_refresh_rates =
+                slice::from_raw_parts(result.refreshRates, result.refreshRatesCount as _).to_vec();
+            let preferred_refresh_rate = available_refresh_rates.last().cloned().unwrap_or(60_f32);
 
+            let headset_info = HeadsetInfoPacket {
+                recommended_eye_width: result.recommendedEyeWidth as _,
+                recommended_eye_height: result.recommendedEyeHeight as _,
+                available_refresh_rates,
+                preferred_refresh_rate,
+                reserved: format!("{}", *ALVR_VERSION),
+            };
+
+            let private_identity = PrivateIdentity {
+                hostname: trace_err!(jhostname.try_to_string(env))?,
+                certificate_pem: trace_err!(jcertificate_pem.try_to_string(env))?,
+                key_pem: trace_err!(jprivate_key.try_to_string(env))?,
+            };
+
+            let runtime = trace_err!(Runtime::new())?;
+
+            runtime.spawn(async move {
+                let connection_loop = connection::connection_lifecycle_loop(
+                    headset_info,
+                    device_name,
+                    private_identity,
+                    Arc::new(java_vm),
+                    Arc::new(connection::ActivityRef(activity_ref)),
+                    Arc::new(connection::NalClassRef(nal_class_ref)),
+                );
+
+                tokio::select! {
+                    _ = connection_loop => (),
+                    _ = ON_PAUSE_NOTIFIER.notified() => ()
+                };
+            });
+
+            *RUNTIME.lock() = Some(runtime);
+
+            Ok(())
+        }());
         Ok(())
-    }());
+    })
+    .resolve::<ThrowRuntimeExAndDefault>();
 }
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onStreamStartNative(
-    _: JNIEnv,
+    _: EnvUnowned,
     _: JObject,
 ) {
     onStreamStartNative()
@@ -483,7 +512,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onStreamSta
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onPauseNative(
-    _: JNIEnv,
+    _: EnvUnowned,
     _: JObject,
 ) {
     ON_PAUSE_NOTIFIER.notify_waiters();
@@ -496,7 +525,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onPauseNati
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onBatteryChangedNative(
-    _: JNIEnv,
+    _: EnvUnowned,
     _: JObject,
     battery: i32,
     plugged: i32,
@@ -506,7 +535,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onBatteryCh
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_isConnectedNative(
-    _: JNIEnv,
+    _: EnvUnowned,
     _: JObject,
 ) -> u8 {
     isConnectedNative()
@@ -514,7 +543,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_isConnected
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_requestIDR(
-    _: JNIEnv,
+    _: EnvUnowned,
     _: JObject,
 ) {
     IDR_REQUEST_NOTIFIER.notify_waiters();

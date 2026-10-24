@@ -126,7 +126,7 @@ impl<T: Serialize> StreamSender<T> {
         header: &T,
         preferred_max_buffer_size: usize,
     ) -> StrResult<SenderBuffer<T>> {
-        let header_size = trace_err!(bincode::serialized_size(header))?;
+        let header_size = trace_err!(crate::wire::serialized_size(header))?;
         // the first two bytes are for the stream ID
         let offset = 2 + 4 + header_size as usize;
 
@@ -138,7 +138,7 @@ impl<T: Serialize> StreamSender<T> {
         buffer.put_u32(0);
 
         let mut buffer_writer = buffer.writer();
-        trace_err!(bincode::serialize_into(&mut buffer_writer, header))?;
+        trace_err!(crate::wire::serialize_into(&mut buffer_writer, header))?;
         let buffer = buffer_writer.into_inner();
 
         Ok(SenderBuffer {
@@ -182,7 +182,7 @@ impl<T: DeserializeOwned> StreamReceiver<T> {
         self.next_packet_index = packet_index + 1;
 
         let mut bytes_reader = bytes.reader();
-        let header = trace_err!(bincode::deserialize_from(&mut bytes_reader))?;
+        let header = trace_err!(crate::wire::deserialize_from(&mut bytes_reader))?;
         let buffer = bytes_reader.into_inner();
 
         // At this point, "buffer" does not include the header anymore

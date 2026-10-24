@@ -23,7 +23,7 @@ This is a fork of [ALVR](https://github.com/polygraphene/ALVR).
 -   SteamVR  
 
 -   High-end gaming PC
-    -   Windows 10 May 2020 update is recommended. If you are on an older version, you need to install Chrome or another Chromium based browser.  
+    -   Windows 10 May 2020 update is recommended. A browser is no longer needed: the dashboard is a native window.  
     -   Minimum supported OS version is Windows 8.  
     -   NVIDIA GPU that supports NVENC ([Supported GPUs](https://github.com/polygraphene/ALVR/wiki/Supported-GPU)) (or with an AMD GPU that supports AMF VCE) with the latest driver.  
     -   Laptops with an onboard (Intel HD, AMD iGPU) and an additional dedicated GPU (NVidia GTX/RTX, AMD HD/R5/R7): you should assign the dedicated GPU or "high performance graphics adapter" to the applications ALVR, SteamVR for best performance and compatibility. (NVidia: Nvidia control panel->3d settings->application settings; AMD: similiar way) 

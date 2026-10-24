@@ -10,6 +10,6 @@ rust-version = "1.58"
 alvr_filesystem = { path = "../filesystem" }
 
 fs_extra = "1.3"
-pico-args = "0.4"
+pico-args = "0.5"
 walkdir = "2"
 pkg-config = "0.3.9"

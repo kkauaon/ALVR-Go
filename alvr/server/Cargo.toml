@@ -27,9 +27,8 @@ settings-schema = { path = "../settings-schema", features = [
 
 # Basic utilities
 chrono = "0.4"
-parking_lot = "0.12"
+parking_lot = "0.13"
 # Serialization
-bincode = "1"
 serde = "1"
 serde_json = "1"
 # Async
@@ -41,29 +40,17 @@ tokio = { version = "1", features = [
     "io-util",
     "net",
     "fs",
+    "time",
+    "sync",
 ] }
-# Networking
 bytes = "1"
-headers = "0.3"
-hyper = { version = "0.14", features = [
-    "http2",
-    "server",
-    "stream",
-    "runtime",
-    "tcp",
-] }
-reqwest = "0.11"
-tokio-tungstenite = "0.17"
 tokio-util = { version = "0.7", features = ["codec"] }
-# Graphics
 wgpu = "30"
-winit = "0.26" # needed to get the screen size
-# Browser interop
-tempfile = "3"
-alcro = "0.5.4"
-webbrowser = "0.6" # this is just for opening links in the default browser
+# Desktop UI
+eframe = "0.37"
+winit = "0.30" # platform extensions to run the dashboard event loop off the main thread
 # Miscellaneous
-fern = "0.6"
+fern = "0.7"
 
 [build-dependencies]
 alvr_filesystem = { path = "../filesystem" }

@@ -8,4 +8,4 @@ rust-version = "1.58"
 
 [dependencies]
 lazy_static = "1"
-dirs = "4"
+dirs = "7"

@@ -19,25 +19,23 @@ settings-schema = { path = "../settings-schema", features = [
 ] }
 
 # Basic utilities
-parking_lot = "0.12"
-rand = "0.8"
+parking_lot = "0.13"
+rand = "0.10"
 # Serialization
 serde_json = "1"
-bincode = "1"
 # Async and networking
 bytes = "1"
 futures = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 # Miscellaneous
-cpal = "0.13.5"
 
 # todo: move to target_os = "android"
-jni = "0.19"
+jni = "0.22"
 
 [target.'cfg(target_os = "android")'.dependencies]
-android_logger = "0.10"
+android_logger = "0.15"
 # todo: use CPAL when moving the entry point to Rust
-oboe = "0.4" # Note: cannot use feature "java-interface" to query audio info
+oboe = "0.6" # Note: cannot use feature "java-interface" to query audio info
 
 [build-dependencies]
 bindgen = "0.73"

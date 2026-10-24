@@ -19,9 +19,9 @@ pub async fn announce_client_loop(
     let mut handshake_socket = trace_err!(UdpSocket::bind((LOCAL_IP, CONTROL_PORT)).await)?;
     trace_err!(handshake_socket.set_broadcast(true))?;
 
-    let client_handshake_packet = trace_err!(bincode::serialize(&HandshakePacket::Client(
-        handshake_packet
-    )))?;
+    let client_handshake_packet = trace_err!(alvr_sockets::wire::serialize(
+        &HandshakePacket::Client(handshake_packet)
+    ))?;
 
     loop {
         let broadcast_result = handshake_socket
@@ -47,7 +47,7 @@ pub async fn announce_client_loop(
                     )?;
 
                     if let Ok(HandshakePacket::Server(handshake_packet)) =
-                        bincode::deserialize(&server_response_buffer[..packet_size])
+                        alvr_sockets::wire::deserialize(&server_response_buffer[..packet_size])
                     {
                         warn!("received packet {handshake_packet:?}");
                         break Ok(ConnectionError::ServerMessage(handshake_packet));

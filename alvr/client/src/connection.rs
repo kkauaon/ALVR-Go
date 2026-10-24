@@ -20,7 +20,8 @@ use alvr_sockets::{
 };
 use futures::future::BoxFuture;
 use jni::{
-    objects::{GlobalRef, JClass},
+    jni_sig, jni_str,
+    objects::{Global, JClass, JObject, JValue},
     JavaVM,
 };
 use serde_json as json;
@@ -72,9 +73,19 @@ impl Drop for StreamCloseGuard {
     }
 }
 
+// JNI global references are valid on every thread. These wrappers are needed because the compiler
+// cannot prove `Send` for `Global<JObject<'static>>` inside an async block ("not general enough").
+pub struct ActivityRef(pub Global<JObject<'static>>);
+pub struct NalClassRef(pub Global<JClass<'static>>);
+
+unsafe impl Send for ActivityRef {}
+unsafe impl Sync for ActivityRef {}
+unsafe impl Send for NalClassRef {}
+unsafe impl Sync for NalClassRef {}
+
 fn set_loading_message(
     java_vm: &JavaVM,
-    activity_ref: &GlobalRef,
+    activity_ref: &ActivityRef,
     hostname: &str,
     message: &str,
 ) -> StrResult {
@@ -83,17 +94,120 @@ fn set_loading_message(
         *ALVR_VERSION,
     );
 
-    // Note: env = java_vm.attach_current_thread() cannot be saved into a variable because it is
-    // not Send (compile error). This makes sense since tokio could move the execution of this
-    // task to another thread at any time, and env is valid only within a specific thread. For
-    // the same reason, other jni objects cannot be made into variables and the arguments must
-    // be created inline within the call_method() call
-    trace_err!(trace_err!(java_vm.attach_current_thread())?.call_method(
-        activity_ref,
-        "setLoadingMessage",
-        "(Ljava/lang/String;)V",
-        &[trace_err!(trace_err!(java_vm.attach_current_thread())?.new_string(message))?.into()],
-    ))?;
+    // Note: the Env given by attach_current_thread() is valid only within the closure (and it is
+    // not Send), which makes sense since tokio could move the execution of this task to another
+    // thread at any time. All jni objects must be created inside the closure.
+    trace_err!(
+        java_vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let message = env.new_string(message)?;
+            env.call_method(
+                &activity_ref.0,
+                jni_str!("setLoadingMessage"),
+                jni_sig!("(Ljava/lang/String;)V"),
+                &[JValue::Object(&message)],
+            )?;
+            Ok(())
+        })
+    )?;
+
+    Ok(())
+}
+
+fn set_dark_mode(java_vm: &JavaVM, activity_ref: &ActivityRef, enabled: bool) -> StrResult {
+    trace_err!(
+        java_vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            env.call_method(
+                &activity_ref.0,
+                jni_str!("setDarkMode"),
+                jni_sig!("(Z)V"),
+                &[JValue::Bool(enabled)],
+            )?;
+            Ok(())
+        })
+    )?;
+
+    Ok(())
+}
+
+fn notify_server_connected(
+    java_vm: &JavaVM,
+    activity_ref: &ActivityRef,
+    fps: f32,
+    hevc: bool,
+    realtime_decoder: bool,
+    dashboard_url: &str,
+) -> StrResult {
+    trace_err!(
+        java_vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let dashboard_url = env.new_string(dashboard_url)?;
+            env.call_method(
+                &activity_ref.0,
+                jni_str!("onServerConnected"),
+                jni_sig!("(FIZLjava/lang/String;)V"),
+                &[
+                    JValue::Float(fps),
+                    JValue::Int(hevc as i32),
+                    JValue::Bool(realtime_decoder),
+                    JValue::Object(&dashboard_url),
+                ],
+            )?;
+            Ok(())
+        })
+    )?;
+
+    Ok(())
+}
+
+// The main stream loop must be run in a normal thread, because it needs to access the JNI env
+// many times per second. The thread stays attached for the whole duration of the loop.
+fn run_legacy_stream_loop(
+    java_vm: &JavaVM,
+    activity_ref: &ActivityRef,
+    nal_class_ref: &NalClassRef,
+    codec: CodecType,
+    enable_fec: bool,
+    legacy_receive_data_receiver: smpsc::Receiver<Vec<u8>>,
+) -> StrResult {
+    trace_err!(
+        java_vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let env_ptr = env.get_raw() as _;
+            let activity_ptr = activity_ref.0.as_raw();
+            let nal_class_ptr = nal_class_ref.0.as_raw();
+
+            unsafe {
+                crate::initializeSocket(
+                    env_ptr,
+                    activity_ptr as _,
+                    nal_class_ptr as _,
+                    matches!(codec, CodecType::HEVC) as _,
+                    enable_fec,
+                );
+
+                let mut idr_request_deadline = None;
+
+                while let Ok(mut data) = legacy_receive_data_receiver.recv() {
+                    // Send again IDR packet every 2s in case it is missed
+                    // (due to dropped burst of packets at the start of the stream or otherwise).
+                    if !crate::IDR_PARSED.load(Ordering::Relaxed) {
+                        if let Some(deadline) = idr_request_deadline {
+                            if deadline < Instant::now() {
+                                crate::IDR_REQUEST_NOTIFIER.notify_waiters();
+                                idr_request_deadline = None;
+                            }
+                        } else {
+                            idr_request_deadline = Some(Instant::now() + Duration::from_secs(2));
+                        }
+                    }
+
+                    crate::legacyReceive(data.as_mut_ptr(), data.len() as _);
+                }
+
+                crate::closeSocket(env_ptr);
+            }
+
+            Ok(())
+        })
+    )?;
 
     Ok(())
 }
@@ -103,8 +217,8 @@ async fn connection_pipeline(
     device_name: String,
     private_identity: &PrivateIdentity,
     java_vm: Arc<JavaVM>,
-    activity_ref: Arc<GlobalRef>,
-    nal_class_ref: Arc<GlobalRef>,
+    activity_ref: Arc<ActivityRef>,
+    nal_class_ref: Arc<NalClassRef>,
 ) -> StrResult {
     let hostname = &private_identity.hostname;
 
@@ -243,12 +357,7 @@ async fn connection_pipeline(
         is_connected: Arc::clone(&is_connected),
     };
 
-    trace_err!(trace_err!(java_vm.attach_current_thread())?.call_method(
-        &*activity_ref,
-        "setDarkMode",
-        "(Z)V",
-        &[settings.extra.client_dark_mode.into()],
-    ))?;
+    set_dark_mode(&java_vm, &activity_ref, settings.extra.client_dark_mode)?;
 
     // create this before initializing the stream on cpp side
     let (views_config_sender, mut views_config_receiver) = tmpsc::unbounded_channel();
@@ -308,19 +417,14 @@ async fn connection_pipeline(
         });
     }
 
-    trace_err!(trace_err!(java_vm.attach_current_thread())?.call_method(
-        &*activity_ref,
-        "onServerConnected",
-        "(FIZLjava/lang/String;)V",
-        &[
-            config_packet.fps.into(),
-            (matches!(settings.video.codec, CodecType::HEVC) as i32).into(),
-            settings.video.client_request_realtime_decoder.into(),
-            trace_err!(trace_err!(java_vm.attach_current_thread())?
-                .new_string(config_packet.dashboard_url))?
-            .into()
-        ],
-    ))?;
+    notify_server_connected(
+        &java_vm,
+        &activity_ref,
+        config_packet.fps,
+        matches!(settings.video.codec, CodecType::HEVC),
+        settings.video.client_request_realtime_decoder,
+        &config_packet.dashboard_url,
+    )?;
 
     let tracking_clientside_prediction = match &settings.headset.controllers {
         Switch::Enabled(controllers) => controllers.clientside_prediction,
@@ -496,43 +600,14 @@ async fn connection_pipeline(
         let codec = settings.video.codec;
         let enable_fec = settings.connection.enable_fec;
         move || -> StrResult {
-            let env = trace_err!(java_vm.attach_current_thread())?;
-            let env_ptr = env.get_native_interface() as _;
-            let activity_obj = activity_ref.as_obj();
-            let nal_class: JClass = nal_class_ref.as_obj().into();
-
-            unsafe {
-                crate::initializeSocket(
-                    env_ptr,
-                    *activity_obj as _,
-                    **nal_class as _,
-                    matches!(codec, CodecType::HEVC) as _,
-                    enable_fec,
-                );
-
-                let mut idr_request_deadline = None;
-
-                while let Ok(mut data) = legacy_receive_data_receiver.recv() {
-                    // Send again IDR packet every 2s in case it is missed
-                    // (due to dropped burst of packets at the start of the stream or otherwise).
-                    if !crate::IDR_PARSED.load(Ordering::Relaxed) {
-                        if let Some(deadline) = idr_request_deadline {
-                            if deadline < Instant::now() {
-                                crate::IDR_REQUEST_NOTIFIER.notify_waiters();
-                                idr_request_deadline = None;
-                            }
-                        } else {
-                            idr_request_deadline = Some(Instant::now() + Duration::from_secs(2));
-                        }
-                    }
-
-                    crate::legacyReceive(data.as_mut_ptr(), data.len() as _);
-                }
-
-                crate::closeSocket(env_ptr);
-            }
-
-            Ok(())
+            run_legacy_stream_loop(
+                &java_vm,
+                &activity_ref,
+                &nal_class_ref,
+                codec,
+                enable_fec,
+                legacy_receive_data_receiver,
+            )
         }
     });
 
@@ -737,8 +812,8 @@ pub async fn connection_lifecycle_loop(
     device_name: &str,
     private_identity: PrivateIdentity,
     java_vm: Arc<JavaVM>,
-    activity_ref: Arc<GlobalRef>,
-    nal_class_ref: Arc<GlobalRef>,
+    activity_ref: Arc<ActivityRef>,
+    nal_class_ref: Arc<NalClassRef>,
 ) {
     set_loading_message(
         &*java_vm,

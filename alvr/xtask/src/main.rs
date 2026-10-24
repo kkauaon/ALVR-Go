@@ -27,7 +27,6 @@ SUBCOMMANDS:
     kill-oculus         Kill all Oculus processes
     bump-versions       Bump server and client package versions
     clippy              Show warnings for selected clippy lints
-    prettier            Format JS and CSS files with prettier; Requires Node.js and NPM.
 
 FLAGS:
     --reproducible      Force cargo to build reproducibly. Used only for build subcommands
@@ -230,19 +229,6 @@ pub fn build_server(
     // fs::create_dir_all(&layout.resources_dir()).unwrap();
     // fsx::copy_items(&items, layout.resources_dir(), &dirx::CopyOptions::new()).unwrap();
 
-    let dir_content = dirx::get_dir_content2(
-        afs::workspace_dir().join("alvr/dashboard"),
-        &dirx::DirOptions { depth: 1 },
-    )
-    .unwrap();
-    let items: Vec<&String> = dir_content.directories[1..]
-        .iter()
-        .chain(dir_content.files.iter())
-        .collect();
-
-    fs::create_dir_all(&layout.dashboard_dir()).unwrap();
-    fsx::copy_items(&items, layout.dashboard_dir(), &dirx::CopyOptions::new()).unwrap();
-
     if cfg!(target_os = "linux") {
         command::run_in(
             &afs::workspace_dir().join("alvr/vulkan-layer"),
@@ -349,10 +335,6 @@ fn clippy() {
     .unwrap();
 }
 
-fn prettier() {
-    command::run("npx -p prettier@2.2.1 prettier --config alvr/xtask/.prettierrc --write '**/*[!.min].{css,js}'").unwrap();
-}
-
 fn main() {
     let begin_time = Instant::now();
 
@@ -409,7 +391,6 @@ fn main() {
                 "kill-oculus" => kill_oculus_processes(),
                 "bump-versions" => version::bump_version(version, is_nightly),
                 "clippy" => clippy(),
-                "prettier" => prettier(),
                 _ => {
                     println!("\nUnrecognized subcommand.");
                     println!("{HELP_STR}");

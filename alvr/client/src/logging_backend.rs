@@ -5,7 +5,7 @@ pub fn init_logging() {
     android_logger::init_once(
         android_logger::Config::default()
             .with_tag("[ALVR NATIVE-RUST]")
-            .with_min_level(log::Level::Info),
+            .with_max_level(log::LevelFilter::Info),
     );
 
     alvr_common::set_panic_hook();

@@ -17,7 +17,7 @@ pub struct ControlSocketSender<T> {
 
 impl<S: Serialize> ControlSocketSender<S> {
     pub async fn send(&mut self, packet: &S) -> StrResult {
-        let packet_bytes = trace_err!(bincode::serialize(packet))?;
+        let packet_bytes = trace_err!(crate::wire::serialize(packet))?;
         trace_err!(self.inner.send(bytes::Bytes::from(packet_bytes)).await)
     }
 }
@@ -30,7 +30,7 @@ pub struct ControlSocketReceiver<T> {
 impl<R: DeserializeOwned> ControlSocketReceiver<R> {
     pub async fn recv(&mut self) -> StrResult<R> {
         let packet_bytes = trace_err!(trace_none!(self.inner.next().await)?)?;
-        trace_err!(bincode::deserialize(&packet_bytes))
+        trace_err!(crate::wire::deserialize(&packet_bytes))
     }
 }
 
@@ -70,13 +70,13 @@ impl ProtoControlSocket {
     }
 
     pub async fn send<S: Serialize>(&mut self, packet: &S) -> StrResult {
-        let packet_bytes = trace_err!(bincode::serialize(packet))?;
+        let packet_bytes = trace_err!(crate::wire::serialize(packet))?;
         trace_err!(self.inner.send(bytes::Bytes::from(packet_bytes)).await)
     }
 
     pub async fn recv<R: DeserializeOwned>(&mut self) -> StrResult<R> {
         let packet_bytes = trace_err!(trace_none!(self.inner.next().await)?)?;
-        trace_err!(bincode::deserialize(&packet_bytes))
+        trace_err!(crate::wire::deserialize(&packet_bytes))
     }
 
     pub fn split<S: Serialize, R: DeserializeOwned>(

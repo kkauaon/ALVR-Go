@@ -26,7 +26,7 @@ pub async fn search_client_loop<F: Future<Output = bool>>(
             };
 
         let handshake_packet = if let Ok(HandshakePacket::Client(packet)) =
-            bincode::deserialize(&packet_buffer[..handshake_packet_size])
+            alvr_sockets::wire::deserialize(&packet_buffer[..handshake_packet_size])
         {
             packet
         } else if &packet_buffer[..5] == b"\x01ALVR" {
@@ -50,9 +50,9 @@ pub async fn search_client_loop<F: Future<Output = bool>>(
         }
 
         if !alvr_common::is_version_compatible(&handshake_packet.version) {
-            let response_bytes = trace_err!(bincode::serialize(&HandshakePacket::Server(
-                ServerHandshakePacket::IncompatibleVersions
-            )))?;
+            let response_bytes = trace_err!(alvr_sockets::wire::serialize(
+                &HandshakePacket::Server(ServerHandshakePacket::IncompatibleVersions)
+            ))?;
             handshake_socket
                 .send_to(&response_bytes, client_address)
                 .await
@@ -65,9 +65,9 @@ pub async fn search_client_loop<F: Future<Output = bool>>(
         }
 
         if !client_found_cb(handshake_packet.clone()).await {
-            let response_bytes = trace_err!(bincode::serialize(&HandshakePacket::Server(
-                ServerHandshakePacket::ClientUntrusted
-            )))?;
+            let response_bytes = trace_err!(alvr_sockets::wire::serialize(
+                &HandshakePacket::Server(ServerHandshakePacket::ClientUntrusted)
+            ))?;
 
             handshake_socket
                 .send_to(&response_bytes, client_address)

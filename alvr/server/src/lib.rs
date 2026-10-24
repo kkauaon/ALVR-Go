@@ -3,7 +3,8 @@ mod connection_utils;
 mod dashboard;
 mod graphics_info;
 mod logging_backend;
-mod web_server;
+mod ready_beacon;
+mod settings_editor;
 
 #[allow(
     non_camel_case_types,
@@ -42,6 +43,8 @@ use tokio::{
     sync::{broadcast, mpsc, Notify},
 };
 
+const WS_BROADCAST_CAPACITY: usize = 256;
+
 lazy_static! {
     // Since ALVR_DIR is needed to initialize logging, if error then just panic
     static ref FILESYSTEM_LAYOUT: Layout =
@@ -49,7 +52,6 @@ lazy_static! {
     static ref SESSION_MANAGER: Mutex<SessionManager> =
         Mutex::new(SessionManager::new(&FILESYSTEM_LAYOUT.session()));
     static ref RUNTIME: Mutex<Option<Runtime>> = Mutex::new(Runtime::new().ok());
-    static ref MAYBE_WINDOW: Mutex<Option<Arc<alcro::UI>>> = Mutex::new(None);
 
     static ref VIDEO_SENDER: Mutex<Option<mpsc::UnboundedSender<(VideoFrameHeaderPacket, Vec<u8>)>>> =
         Mutex::new(None);
@@ -118,9 +120,7 @@ pub fn to_cpp_openvr_prop(key: OpenvrPropertyKey, value: OpenvrPropValue) -> Ope
 pub fn shutdown_runtime() {
     alvr_session::log_event(ServerEvent::ServerQuitting);
 
-    if let Some(window) = MAYBE_WINDOW.lock().take() {
-        window.close();
-    }
+    dashboard::close_window();
 
     SHUTDOWN_NOTIFIER.notify_waiters();
 
@@ -216,9 +216,9 @@ pub fn update_client_list(hostname: String, action: ClientListAction) {
 }
 
 fn init() {
-    let (log_sender, _) = broadcast::channel(web_server::WS_BROADCAST_CAPACITY);
-    let (events_sender, _) = broadcast::channel(web_server::WS_BROADCAST_CAPACITY);
-    logging_backend::init_logging(log_sender.clone(), events_sender.clone());
+    let (log_sender, _) = broadcast::channel(WS_BROADCAST_CAPACITY);
+    let (events_sender, _) = broadcast::channel(WS_BROADCAST_CAPACITY);
+    logging_backend::init_logging(log_sender, events_sender.clone());
 
     if let Some(runtime) = RUNTIME.lock().as_mut() {
         // Acquire and drop the session_manager lock to create session.json if not present
@@ -233,18 +233,16 @@ fn init() {
                 }
             }
 
-            let web_server = alvr_common::show_err_async(web_server::web_server(
-                log_sender,
-                events_sender.clone(),
-            ));
+            let ready_beacon = alvr_common::show_err_async(ready_beacon::run());
 
             tokio::select! {
-                _ = web_server => (),
+                _ = ready_beacon => (),
                 _ = SHUTDOWN_NOTIFIER.notified() => (),
             }
         });
 
-        thread::spawn(|| alvr_common::show_err(dashboard::ui_thread()));
+        let dashboard_events_sender = events_sender.clone();
+        thread::spawn(move || alvr_common::show_err(dashboard::ui_thread(dashboard_events_sender)));
     }
 
     if matches!(graphics_info::get_gpu_vendor(), GpuVendor::Nvidia) {

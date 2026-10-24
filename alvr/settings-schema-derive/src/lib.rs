@@ -1,11 +1,11 @@
-use heck::{MixedCase, SnakeCase};
+use heck::{ToLowerCamelCase, ToSnakeCase};
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
 use std::string::ToString;
 use syn::{
-    Attribute, Data, DeriveInput, Error, Fields, FieldsNamed, GenericArgument, Ident, Lit, Meta,
-    NestedMeta, PathArguments, Type,
+    punctuated::Punctuated, Attribute, Data, DeriveInput, Error, Expr, ExprLit, Fields,
+    FieldsNamed, GenericArgument, Ident, Lit, Meta, PathArguments, Token, Type,
 };
 
 fn error<T, TT: ToTokens>(message: &str, tokens: TT) -> Result<T, TokenStream> {
@@ -41,7 +41,7 @@ fn schema_attrs(attrs: Vec<Attribute>, name: &str) -> Vec<Attribute> {
     attrs
         .into_iter()
         .filter(|attr| {
-            if let Some(attr_ident) = attr.path.get_ident() {
+            if let Some(attr_ident) = attr.path().get_ident() {
                 attr_ident == name
             } else {
                 false
@@ -54,10 +54,10 @@ struct SchemaAttributes {
     placeholders: Vec<String>,
     advanced: bool,
     switch_advanced: bool,
-    min: Option<Lit>,
-    max: Option<Lit>,
-    step: Option<Lit>,
-    gui: Option<Lit>,
+    min: Option<Expr>,
+    max: Option<Expr>,
+    step: Option<Expr>,
+    gui: Option<Expr>,
 }
 
 fn schema_attributes(attrs: Vec<Attribute>) -> Result<SchemaAttributes, TokenStream> {
@@ -69,54 +69,50 @@ fn schema_attributes(attrs: Vec<Attribute>) -> Result<SchemaAttributes, TokenStr
     let mut step = None;
     let mut gui = None;
     for attr in schema_attrs(attrs, "schema") {
-        let parsed_attr = attr
-            .parse_meta()
+        let args_list = attr
+            .parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
             .map_err(|e| e.to_compile_error().into_token_stream())?;
-        if let Meta::List(args_list) = parsed_attr {
-            for arg in args_list.nested {
-                if let NestedMeta::Meta(meta_arg) = arg {
-                    match meta_arg {
-                        Meta::Path(path_arg) => {
-                            if let Some(arg_ident) = path_arg.get_ident() {
-                                if arg_ident == "advanced" {
-                                    advanced = true;
-                                } else if arg_ident == "switch_advanced" {
-                                    switch_advanced = true;
-                                } else {
-                                    return error("Unknown identifier or missing value", path_arg);
-                                }
-                            } else {
-                                return error("Expected identifier", path_arg);
-                            }
+        for meta_arg in args_list {
+            match meta_arg {
+                Meta::Path(path_arg) => {
+                    if let Some(arg_ident) = path_arg.get_ident() {
+                        if arg_ident == "advanced" {
+                            advanced = true;
+                        } else if arg_ident == "switch_advanced" {
+                            switch_advanced = true;
+                        } else {
+                            return error("Unknown identifier or missing value", path_arg);
                         }
-                        Meta::NameValue(name_value_arg) => {
-                            if let Some(arg_ident) = name_value_arg.path.get_ident() {
-                                match arg_ident.to_string().as_str() {
-                                    "min" => min = Some(name_value_arg.lit),
-                                    "max" => max = Some(name_value_arg.lit),
-                                    "step" => step = Some(name_value_arg.lit),
-                                    "gui" => gui = Some(name_value_arg.lit),
-                                    "placeholder" => {
-                                        if let Lit::Str(lit_str) = name_value_arg.lit {
-                                            placeholders.push(lit_str.value());
-                                        } else {
-                                            return error("Expected string", name_value_arg.lit);
-                                        }
-                                    }
-                                    _ => return error("Unknown argument name", arg_ident),
-                                }
-                            } else {
-                                return error("Expected identifier", name_value_arg.path);
-                            }
-                        }
-                        _ => return error("Nested arguments not supported", meta_arg),
+                    } else {
+                        return error("Expected identifier", path_arg);
                     }
-                } else {
-                    return error("Unexpected literal", arg);
                 }
+                Meta::NameValue(name_value_arg) => {
+                    let Some(arg_ident) = name_value_arg.path.get_ident() else {
+                        return error("Expected identifier", name_value_arg.path);
+                    };
+                    let value = name_value_arg.value;
+                    match arg_ident.to_string().as_str() {
+                        "min" => min = Some(value),
+                        "max" => max = Some(value),
+                        "step" => step = Some(value),
+                        "gui" => gui = Some(value),
+                        "placeholder" => {
+                            if let Expr::Lit(ExprLit {
+                                lit: Lit::Str(lit_str),
+                                ..
+                            }) = value
+                            {
+                                placeholders.push(lit_str.value());
+                            } else {
+                                return error("Expected string", value);
+                            }
+                        }
+                        _ => return error("Unknown argument name", arg_ident),
+                    }
+                }
+                _ => return error("Nested arguments not supported", meta_arg),
             }
-        } else {
-            return error("Expected arguments", parsed_attr);
         }
     }
     Ok(SchemaAttributes {
@@ -152,10 +148,20 @@ fn bool_type_schema(schema_attrs: SchemaAttributes) -> Result<TokenStream2, Toke
     Ok(quote!(settings_schema::SchemaNode::Boolean { default }))
 }
 
-fn maybe_integer_literal(literal: Option<Lit>) -> Result<TokenStream2, TokenStream> {
+/// Returns the literal inside `expr`, looking through a leading minus sign (`-1.0` is a unary
+/// expression, not a literal, since syn 2).
+fn numeric_literal(expr: &Expr) -> Option<&Lit> {
+    match expr {
+        Expr::Lit(ExprLit { lit, .. }) => Some(lit),
+        Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => numeric_literal(&unary.expr),
+        _ => None,
+    }
+}
+
+fn maybe_integer_literal(literal: Option<Expr>) -> Result<TokenStream2, TokenStream> {
     if let Some(literal) = literal {
-        if let Lit::Int(lit_int) = literal {
-            Ok(quote!(Some(#lit_int)))
+        if matches!(numeric_literal(&literal), Some(Lit::Int(_))) {
+            Ok(quote!(Some(#literal)))
         } else {
             error("Expected integer literal", literal)
         }
@@ -164,10 +170,10 @@ fn maybe_integer_literal(literal: Option<Lit>) -> Result<TokenStream2, TokenStre
     }
 }
 
-fn maybe_float_literal(literal: Option<Lit>) -> Result<TokenStream2, TokenStream> {
+fn maybe_float_literal(literal: Option<Expr>) -> Result<TokenStream2, TokenStream> {
     if let Some(literal) = literal {
-        if let Lit::Float(lit_float) = literal {
-            Ok(quote!(Some(#lit_float as _)))
+        if matches!(numeric_literal(&literal), Some(Lit::Float(_))) {
+            Ok(quote!(Some(#literal as _)))
         } else {
             error("Expected float literal", literal)
         }
@@ -176,9 +182,13 @@ fn maybe_float_literal(literal: Option<Lit>) -> Result<TokenStream2, TokenStream
     }
 }
 
-fn maybe_numeric_gui(literal: Option<Lit>) -> Result<TokenStream2, TokenStream> {
+fn maybe_numeric_gui(literal: Option<Expr>) -> Result<TokenStream2, TokenStream> {
     if let Some(literal) = literal {
-        if let Lit::Str(lit_str) = literal {
+        if let Expr::Lit(ExprLit {
+            lit: Lit::Str(lit_str),
+            ..
+        }) = literal
+        {
             let lit_val = lit_str.value();
             if matches!(lit_val.as_str(), "TextBox" | "UpDown" | "Slider") {
                 let ident = Ident::new(&lit_val, lit_str.span());
@@ -409,17 +419,21 @@ fn type_schema(ty: &Type, schema_attrs: SchemaAttributes) -> Result<TypeSchema, 
 
 fn get_case(attrs: Vec<Attribute>) -> Result<Option<String>, TokenStream> {
     for attr in schema_attrs(attrs, "serde") {
-        let parsed_attr = attr
-            .parse_meta()
-            .map_err(|e| e.to_compile_error().into_token_stream())?;
-        if let Meta::List(args_list) = parsed_attr {
-            for arg in args_list.nested {
-                if let NestedMeta::Meta(Meta::NameValue(name_value_arg)) = arg {
-                    if let Some(arg_ident) = name_value_arg.path.get_ident() {
-                        if arg_ident == "rename_all" {
-                            if let Lit::Str(lit_str) = name_value_arg.lit {
-                                return Ok(Some(lit_str.value()));
-                            }
+        // serde attributes may hold arguments this parser does not understand: ignore failures
+        let Ok(args_list) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
+        else {
+            continue;
+        };
+        for arg in args_list {
+            if let Meta::NameValue(name_value_arg) = arg {
+                if let Some(arg_ident) = name_value_arg.path.get_ident() {
+                    if arg_ident == "rename_all" {
+                        if let Expr::Lit(ExprLit {
+                            lit: Lit::Str(lit_str),
+                            ..
+                        }) = name_value_arg.value
+                        {
+                            return Ok(Some(lit_str.value()));
                         }
                     }
                 }
@@ -431,7 +445,7 @@ fn get_case(attrs: Vec<Attribute>) -> Result<Option<String>, TokenStream> {
 
 fn case_transform(input: &str, format: Option<&str>) -> String {
     match format {
-        Some("camelCase") => input.to_mixed_case(),
+        Some("camelCase") => input.to_lower_camel_case(),
         Some("snake_case") => input.to_snake_case(),
         _ => input.into(),
     }

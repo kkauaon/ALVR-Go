@@ -1,6 +1,6 @@
 # ALVR documentation
 
-Audited source tree: ALVR 18.2.3 (all workspace crates and the Android client report 18.2.3). The tree is the base for a fork aimed only at the Oculus Go; the fork direction is recorded in the docs. No Go-specific behavior changes exist yet, though the build toolchain was upgraded on 2026-10-24.
+Audited source tree: ALVR 18.2.3 (all workspace crates and the Android client report 18.2.3). The tree is the base for a fork aimed only at the Oculus Go; the fork direction is recorded in the docs. No Go-specific behavior changes exist yet, though the build toolchain was upgraded on 2026-10-24. Direct Rust dependencies were also raised to their latest versions on that date and the sources were ported to them, and all desktop UI (launcher and dashboard) now runs on egui; the web dashboard, web server, `druid`, `gtk`, `alcro` and `webbrowser` are removed. The Android client was ported to the upgraded dependencies and passes `cargo check` for Android, but it was not built with Gradle or run on a headset.
 
 Before this audit the repository had no project-level documentation. The only Markdown files were the top-level README and short per-crate READMEs under `alvr/`. Those files remain the source of truth for crate-level notes; they are current but very thin.
 
