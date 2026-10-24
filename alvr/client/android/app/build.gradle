@@ -1,0 +1,109 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.mozilla.rust-android-gradle.rust-android'
+
+android {
+    namespace = "com.polygraphene.alvr"
+    compileSdk 36
+    ndkVersion = "27.1.12297006"
+    defaultConfig {
+        applicationId "alvr.client"
+        minSdk 24
+        targetSdk 31
+        versionCode 84
+        versionName "18.2.3"
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -fexceptions -frtti"
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.debug
+            ndk {
+                abiFilters "arm64-v8a"
+            }
+            cargo {
+                profile = "release"
+            }
+        }
+        debug {
+            jniDebuggable = true
+            ndk {
+                abiFilters "arm64-v8a"
+            }
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt"
+        }
+    }
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ["src/main/jniLibs"]
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+    buildFeatures {
+        buildConfig = true
+    }
+    lint {
+        // ALVR is sideloaded. Keep the upstream targetSdk to avoid changing
+        // Android 12+ runtime behavior; the Play Store check does not apply.
+        disable 'ExpiredTargetSdkVersion'
+    }
+
+    flavorDimensions "headset", "package"
+    productFlavors {
+        OculusQuest {
+            dimension "headset"
+            applicationIdSuffix ".quest"
+        }
+        OculusGo {
+            dimension "headset"
+            applicationIdSuffix ".go"
+            minSdk 21
+        }
+        Stable {
+            dimension "package"
+        }
+        Nightly {
+            dimension "package"
+            applicationIdSuffix ".nightly"
+        }
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar', '*.so'])
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+}
+
+configurations.all {
+    // Kotlin 1.8 merged the JDK7/JDK8 artifacts into kotlin-stdlib.
+    // Exclude the stale split artifacts pulled in by coroutines 1.6.
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+}
+
+cargo {
+    module = "../.."
+    libname = "alvr_client"
+    targets = ["arm64"]
+    targetDirectory = "../../../../target"
+}
+tasks.whenTaskAdded { task ->
+    if (task.name.startsWith('javaPreCompile')) {
+        task.dependsOn 'cargoBuild'
+    }
+}

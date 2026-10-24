@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = [
+    "alvr/settings-schema-derive",
+    "alvr/settings-schema",
+    "alvr/filesystem",
+    "alvr/common",
+    "alvr/commands",
+    "alvr/session",
+    "alvr/sockets",
+    "alvr/audio",
+    "alvr/client",
+    "alvr/server",
+    "alvr/launcher",
+    "alvr/vrcompositor-wrapper",
+    "alvr/vulkan-layer",
+    "alvr/xtask",
+]
