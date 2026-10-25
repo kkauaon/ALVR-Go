@@ -53,6 +53,9 @@ class OvrContext {
 public:
     ANativeWindow *window = nullptr;
     ovrMobile *Ovr{};
+    // Guards Ovr: the connection threads (tracking, guardian) keep running while the app is paused
+    // and VR mode is left, see onPauseNative().
+    std::mutex ovrMutex;
     ovrJava java{};
     JNIEnv *env{};
 
@@ -577,6 +580,8 @@ void sendTrackingInfo(bool clientsidePrediction) {
 }
 
 OnResumeResult onResumeNative(void *v_surface, bool darkMode) {
+    std::lock_guard<std::mutex> ovrLock(g_ctx.ovrMutex);
+
     auto surface = (jobject) v_surface;
 
     g_ctx.window = ANativeWindow_fromSurface(g_ctx.env, surface);
@@ -687,6 +692,8 @@ void onStreamStartNative() {
 }
 
 void onPauseNative() {
+    std::lock_guard<std::mutex> ovrLock(g_ctx.ovrMutex);
+
     ovrRenderer_Destroy(&g_ctx.Renderer);
 
     LOGI("Leaving VR mode.");
@@ -904,6 +911,13 @@ void onBatteryChangedNative(int battery, int plugged) {
 }
 
 GuardianData getGuardianData() {
+    std::lock_guard<std::mutex> ovrLock(g_ctx.ovrMutex);
+
+    // not in VR mode (the app is paused but the stream is kept alive): nothing to sync
+    if (g_ctx.Ovr == nullptr) {
+        return GuardianData{};
+    }
+
     int recenterCount = vrapi_GetSystemStatusInt(&g_ctx.java, VRAPI_SYS_STATUS_RECENTER_COUNT);
     bool shouldSync;
     if (recenterCount != g_ctx.m_LastHMDRecenterCount) {
@@ -930,6 +944,8 @@ GuardianData getGuardianData() {
 }
 
 void onTrackingNative(bool clientsidePrediction) {
+    std::lock_guard<std::mutex> ovrLock(g_ctx.ovrMutex);
+
     if (g_ctx.Ovr != nullptr) {
         sendTrackingInfo(clientsidePrediction);
     }

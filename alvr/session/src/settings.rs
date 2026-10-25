@@ -164,13 +164,6 @@ pub struct VideoDesc {
 
     pub codec: CodecType,
 
-    // #[schema(advanced)]
-    // pub video_coding: VideoCoding,
-    #[schema(advanced)]
-    pub client_request_realtime_decoder: bool,
-
-    pub use_10bit_encoder: bool,
-
     #[schema(advanced)]
     pub sw_thread_count: u32,
 
@@ -270,47 +263,6 @@ pub enum OpenvrPropValue {
 #[derive(SettingsSchema, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ControllersDesc {
-    // Dropdown:
-    // Oculus Rift S
-    // Oculus Rift S (no handtracking pinch)
-    // Valve Index
-    // Valve Index (no handtracking pinch)
-    // modeIdx and the following strings must be set accordingly
-    #[schema(placeholder = "controller_mode")]
-    //
-    #[schema(advanced)]
-    pub mode_idx: i32,
-
-    #[schema(advanced)]
-    pub tracking_system_name: String,
-
-    #[schema(advanced)]
-    pub manufacturer_name: String,
-
-    #[schema(advanced)]
-    pub model_number: String,
-
-    #[schema(advanced)]
-    pub render_model_name_left: String,
-
-    #[schema(advanced)]
-    pub render_model_name_right: String,
-
-    #[schema(advanced)]
-    pub serial_number: String,
-
-    #[schema(advanced)]
-    pub ctrl_type_left: String,
-
-    #[schema(advanced)]
-    pub ctrl_type_right: String,
-
-    #[schema(advanced)]
-    pub registered_device_type: String,
-
-    #[schema(advanced)]
-    pub input_profile_path: String,
-
     #[schema(placeholder = "tracking_speed")]
     //
     #[schema(advanced)]
@@ -333,66 +285,17 @@ pub struct ControllersDesc {
 
     #[schema(advanced)]
     pub rotation_offset_left: [f32; 3],
-
-    #[schema(advanced, min = 0., max = 5., step = 0.1)]
-    pub haptics_intensity: f32,
-
-    #[schema(advanced, min = 0., max = 1., step = 0.01)]
-    pub haptics_amplitude_curve: f32,
-
-    #[schema(advanced, min = 0., max = 0.1, step = 0.001)]
-    pub haptics_min_duration: f32,
-
-    #[schema(advanced, min = 1., max = 5., step = 0.1)]
-    pub haptics_low_duration_amplitude_multiplier: f32,
-
-    #[schema(advanced, min = 0., max = 1., step = 0.01)]
-    pub haptics_low_duration_range: f32,
-
-    #[schema(advanced)]
-    pub use_headset_tracking_system: bool,
 }
 
 #[derive(SettingsSchema, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Patches {
-    pub remove_sync_popup: bool,
     pub linux_async_reprojection: bool,
 }
 
 #[derive(SettingsSchema, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HeadsetDesc {
-    #[schema(advanced)]
-    pub mode_idx: u64,
-
-    #[schema(advanced)]
-    pub universe_id: u64,
-
-    // Oculus Rift S or HTC Vive. Should all the following strings accordingly
-    #[schema(placeholder = "headset_emulation_mode")]
-    //
-    #[schema(advanced)]
-    pub serial_number: String,
-
-    #[schema(advanced)]
-    pub tracking_system_name: String,
-
-    #[schema(advanced)]
-    pub model_number: String,
-
-    #[schema(advanced)]
-    pub driver_version: String,
-
-    #[schema(advanced)]
-    pub manufacturer_name: String,
-
-    #[schema(advanced)]
-    pub render_model_name: String,
-
-    #[schema(advanced)]
-    pub registered_device_type: String,
-
     #[schema(advanced)]
     pub tracking_frame_offset: i32,
 
@@ -402,16 +305,7 @@ pub struct HeadsetDesc {
     #[schema(advanced)]
     pub force_3dof: bool,
 
-    #[schema(advanced)]
-    pub tracking_ref_only: bool,
-
-    #[schema(advanced)]
-    pub enable_vive_tracker_proxy: bool,
-
     pub controllers: Switch<ControllersDesc>,
-
-    #[schema(advanced)]
-    pub extra_latency_mode: bool,
 }
 
 #[derive(SettingsSchema, Serialize, Deserialize)]
@@ -475,14 +369,11 @@ pub enum LogLevel {
 #[serde(rename_all = "camelCase")]
 pub struct ExtraDesc {
     pub client_dark_mode: bool,
-    pub revert_confirm_dialog: bool,
     pub restart_confirm_dialog: bool,
     pub log_to_disk: bool,
 
     #[schema(advanced)]
     pub notification_level: LogLevel,
-    #[schema(advanced)]
-    pub exclude_notifications_without_id: bool,
 
     patches: Patches,
 }
@@ -516,7 +407,7 @@ pub fn session_settings_default() -> SettingsDefault {
                     height: 1600,
                 },
             },
-            preferred_fps: 72.,
+            preferred_fps: 60.,
             codec: CodecTypeDefault {
                 variant: CodecTypeDefaultVariant::H264,
             },
@@ -546,14 +437,12 @@ pub fn session_settings_default() -> SettingsDefault {
             //         ],
             //     },
             // },
-            client_request_realtime_decoder: true,
-            use_10bit_encoder: false,
             sw_thread_count: 0,
-            encode_bitrate_mbs: 30,
+            encode_bitrate_mbs: 25,
             adaptive_bitrate: SwitchDefault {
                 enabled: true,
                 content: AdaptiveBitrateDescDefault {
-                    bitrate_maximum: 200,
+                    bitrate_maximum: 50,
                     latency_target: 12000,
                     latency_use_frametime: SwitchDefault {
                         enabled: false,
@@ -632,34 +521,12 @@ pub fn session_settings_default() -> SettingsDefault {
             },
         },
         headset: HeadsetDescDefault {
-            mode_idx: 2,
-            universe_id: 2,
-            serial_number: "1WMGH000XX0000".into(),
-            tracking_system_name: "oculus".into(),
-            model_number: "Miramar".into(),
-            driver_version: "1.55.0".into(),
-            manufacturer_name: "Oculus".into(),
-            render_model_name: "generic_hmd".into(),
-            registered_device_type: "oculus/1WMGH000XX0000".into(),
             tracking_frame_offset: 0,
             position_offset: [0., 0., 0.],
             force_3dof: false,
-            tracking_ref_only: false,
-            enable_vive_tracker_proxy: false,
             controllers: SwitchDefault {
                 enabled: true,
                 content: ControllersDescDefault {
-                    mode_idx: 7,
-                    tracking_system_name: "oculus".into(),
-                    manufacturer_name: "Oculus".into(),
-                    model_number: "Miramar".into(),
-                    render_model_name_left: "oculus_quest2_controller_left".into(),
-                    render_model_name_right: "oculus_quest2_controller_right".into(),
-                    serial_number: "1WMGH000XX0000_Controller".into(),
-                    ctrl_type_left: "oculus_touch".into(),
-                    ctrl_type_right: "oculus_touch".into(),
-                    registered_device_type: "oculus/1WMGH000XX0000_Controller".into(),
-                    input_profile_path: "{oculus}/input/touch_profile.json".into(),
                     pose_time_offset: 0.01,
                     clientside_prediction: false,
                     serverside_prediction: true,
@@ -667,15 +534,8 @@ pub fn session_settings_default() -> SettingsDefault {
                     angular_velocity_cutoff: 10.,
                     position_offset_left: [-0.0065, 0.002, -0.051],
                     rotation_offset_left: [40., 0., 0.],
-                    haptics_intensity: 1.,
-                    haptics_amplitude_curve: 0.4,
-                    haptics_min_duration: 0.01,
-                    haptics_low_duration_amplitude_multiplier: 2.5,
-                    haptics_low_duration_range: 0.5,
-                    use_headset_tracking_system: false,
                 },
             },
-            extra_latency_mode: false,
         },
         connection: ConnectionDescDefault {
             client_discovery: SwitchDefault {
@@ -703,7 +563,6 @@ pub fn session_settings_default() -> SettingsDefault {
         },
         extra: ExtraDescDefault {
             client_dark_mode: false,
-            revert_confirm_dialog: true,
             restart_confirm_dialog: true,
             log_to_disk: cfg!(debug_assertions),
             notification_level: LogLevelDefault {
@@ -713,9 +572,7 @@ pub fn session_settings_default() -> SettingsDefault {
                     LogLevelDefaultVariant::Warning
                 },
             },
-            exclude_notifications_without_id: false,
             patches: PatchesDefault {
-                remove_sync_popup: false,
                 linux_async_reprojection: true,
             },
         },

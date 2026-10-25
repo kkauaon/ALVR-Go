@@ -413,7 +413,7 @@ async fn connection_pipeline(
             } else {
                 2_f32
             },
-            extraLatencyMode: settings.headset.extra_latency_mode,
+            extraLatencyMode: alvr_session::go_profile::EXTRA_LATENCY_MODE,
         });
     }
 
@@ -422,7 +422,7 @@ async fn connection_pipeline(
         &activity_ref,
         config_packet.fps,
         matches!(settings.video.codec, CodecType::HEVC),
-        settings.video.client_request_realtime_decoder,
+        alvr_session::go_profile::CLIENT_REQUEST_REALTIME_DECODER,
         &config_packet.dashboard_url,
     )?;
 

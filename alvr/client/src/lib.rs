@@ -56,6 +56,13 @@ lazy_static! {
     static ref ON_PAUSE_NOTIFIER: Notify = Notify::new();
 }
 
+fn stop_connection() {
+    ON_PAUSE_NOTIFIER.notify_waiters();
+
+    // shutdown and wait for tasks to finish
+    drop(RUNTIME.lock().take());
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_polygraphene_alvr_OvrActivity_initNativeLogging(
     _: EnvUnowned,
@@ -408,6 +415,9 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_destroyNati
     env: EnvUnowned,
     _: JObject,
 ) {
+    // the activity is going away for good: now the connection has to be stopped
+    stop_connection();
+
     destroyNative(env.as_raw() as _)
 }
 
@@ -446,6 +456,12 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onResumeNat
             let nal_class_ref = trace_err!(env.new_global_ref(&nal_class))?;
 
             let result = onResumeNative(jscreen_surface.as_raw() as _, dark_mode == 1);
+
+            // Coming back from the Oculus menu: the connection is still running, so only VR mode
+            // needed to be entered again (the stream is restarted by the activity).
+            if RUNTIME.lock().is_some() {
+                return Ok(());
+            }
 
             let device_name = if result.deviceType == DeviceType_OCULUS_GO {
                 "Oculus Go"
@@ -515,11 +531,9 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onPauseNati
     _: EnvUnowned,
     _: JObject,
 ) {
-    ON_PAUSE_NOTIFIER.notify_waiters();
-
-    // shutdown and wait for tasks to finish
-    drop(RUNTIME.lock().take());
-
+    // The connection is deliberately kept alive: going to the Oculus menu pauses the activity, but
+    // the stream must survive it. Only VR mode and the renderer are left here, the connection
+    // threads stop using VrApi until onResumeNative() enters VR mode again.
     onPauseNative();
 }
 

@@ -51,7 +51,7 @@ pub struct Layout {
     pub executables_dir: PathBuf,
     // (linux only) directory where alvr_vulkan_layer.so is saved
     pub libraries_dir: PathBuf,
-    // parent directory of resources like the dashboard and presets folders
+    // parent directory of resources
     pub static_resources_dir: PathBuf,
     // directory for storing configuration files (session.json)
     pub config_dir: PathBuf,
@@ -149,10 +149,6 @@ impl Layout {
 
     pub fn resources_dir(&self) -> PathBuf {
         self.openvr_driver_root_dir.join("resources")
-    }
-
-    pub fn presets_dir(&self) -> PathBuf {
-        self.static_resources_dir.join("presets")
     }
 
     pub fn session(&self) -> PathBuf {

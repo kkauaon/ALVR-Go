@@ -109,15 +109,6 @@ pub fn build_server(
     fs::create_dir_all(&layout.openvr_driver_lib().parent().unwrap()).unwrap();
     fs::create_dir_all(&layout.launcher_exe().parent().unwrap()).unwrap();
 
-    let mut copy_options = dirx::CopyOptions::new();
-    copy_options.copy_inside = true;
-    fsx::copy_items(
-        &[afs::workspace_dir().join("alvr/xtask/resources/presets")],
-        layout.presets_dir(),
-        &copy_options,
-    )
-    .unwrap();
-
     if bundle_ffmpeg {
         let nvenc_flag = !no_nvidia;
         let ffmpeg_path = dependencies::build_ffmpeg_linux(nvenc_flag);

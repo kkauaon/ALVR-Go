@@ -12,7 +12,8 @@ use alvr_common::{
     HEAD_ID, LEFT_HAND_ID, RIGHT_HAND_ID,
 };
 use alvr_session::{
-    CodecType, FrameSize, OpenvrConfig, OpenvrPropValue, OpenvrPropertyKey, ServerEvent,
+    go_profile as go, CodecType, FrameSize, OpenvrConfig, OpenvrPropValue, OpenvrPropertyKey,
+    ServerEvent,
 };
 use alvr_sockets::{
     spawn_cancelable, ClientConfigPacket, ClientControlPacket, ControlSocketReceiver,
@@ -227,27 +228,27 @@ async fn client_handshake(
     };
 
     let new_openvr_config = OpenvrConfig {
-        universe_id: settings.headset.universe_id,
-        headset_serial_number: settings.headset.serial_number,
-        headset_tracking_system_name: settings.headset.tracking_system_name,
-        headset_model_number: settings.headset.model_number,
-        headset_driver_version: settings.headset.driver_version,
-        headset_manufacturer_name: settings.headset.manufacturer_name,
-        headset_render_model_name: settings.headset.render_model_name,
-        headset_registered_device_type: settings.headset.registered_device_type,
+        universe_id: go::UNIVERSE_ID,
+        headset_serial_number: go::HEADSET_SERIAL_NUMBER.into(),
+        headset_tracking_system_name: go::HEADSET_TRACKING_SYSTEM_NAME.into(),
+        headset_model_number: go::HEADSET_MODEL_NUMBER.into(),
+        headset_driver_version: go::HEADSET_DRIVER_VERSION.into(),
+        headset_manufacturer_name: go::HEADSET_MANUFACTURER_NAME.into(),
+        headset_render_model_name: go::HEADSET_RENDER_MODEL_NAME.into(),
+        headset_registered_device_type: go::HEADSET_REGISTERED_DEVICE_TYPE.into(),
         eye_resolution_width: video_eye_width,
         eye_resolution_height: video_eye_height,
         target_eye_resolution_width: target_eye_width,
         target_eye_resolution_height: target_eye_height,
         seconds_from_vsync_to_photons: settings.video.seconds_from_vsync_to_photons,
         force_3dof: settings.headset.force_3dof,
-        tracking_ref_only: settings.headset.tracking_ref_only,
-        enable_vive_tracker_proxy: settings.headset.enable_vive_tracker_proxy,
+        tracking_ref_only: false,
+        enable_vive_tracker_proxy: false,
         aggressive_keyframe_resend: settings.connection.aggressive_keyframe_resend,
         adapter_index: settings.video.adapter_index,
         codec: matches!(settings.video.codec, CodecType::HEVC) as _,
         refresh_rate: fps as _,
-        use_10bit_encoder: settings.video.use_10bit_encoder,
+        use_10bit_encoder: go::USE_10BIT_ENCODER,
         sw_thread_count: settings.video.sw_thread_count,
         encode_bitrate_mbs: settings.video.encode_bitrate_mbs,
         enable_adaptive_bitrate: session_settings.video.adaptive_bitrate.enabled,
@@ -301,67 +302,17 @@ async fn client_handshake(
             .adaptive_bitrate
             .content
             .bitrate_light_load_threshold,
-        controllers_tracking_system_name: session_settings
-            .headset
-            .controllers
-            .content
-            .tracking_system_name
-            .clone(),
-        controllers_manufacturer_name: session_settings
-            .headset
-            .controllers
-            .content
-            .manufacturer_name
-            .clone(),
-        controllers_model_number: session_settings
-            .headset
-            .controllers
-            .content
-            .model_number
-            .clone(),
-        render_model_name_left_controller: session_settings
-            .headset
-            .controllers
-            .content
-            .render_model_name_left
-            .clone(),
-        render_model_name_right_controller: session_settings
-            .headset
-            .controllers
-            .content
-            .render_model_name_right
-            .clone(),
-        controllers_serial_number: session_settings
-            .headset
-            .controllers
-            .content
-            .serial_number
-            .clone(),
-        controllers_type_left: session_settings
-            .headset
-            .controllers
-            .content
-            .ctrl_type_left
-            .clone(),
-        controllers_type_right: session_settings
-            .headset
-            .controllers
-            .content
-            .ctrl_type_right
-            .clone(),
-        controllers_registered_device_type: session_settings
-            .headset
-            .controllers
-            .content
-            .registered_device_type
-            .clone(),
-        controllers_input_profile_path: session_settings
-            .headset
-            .controllers
-            .content
-            .input_profile_path
-            .clone(),
-        controllers_mode_idx: session_settings.headset.controllers.content.mode_idx,
+        controllers_tracking_system_name: go::CONTROLLERS_TRACKING_SYSTEM_NAME.into(),
+        controllers_manufacturer_name: go::CONTROLLERS_MANUFACTURER_NAME.into(),
+        controllers_model_number: go::CONTROLLERS_MODEL_NUMBER.into(),
+        render_model_name_left_controller: go::CONTROLLERS_RENDER_MODEL_NAME_LEFT.into(),
+        render_model_name_right_controller: go::CONTROLLERS_RENDER_MODEL_NAME_RIGHT.into(),
+        controllers_serial_number: go::CONTROLLERS_SERIAL_NUMBER.into(),
+        controllers_type_left: go::CONTROLLERS_TYPE_LEFT.into(),
+        controllers_type_right: go::CONTROLLERS_TYPE_RIGHT.into(),
+        controllers_registered_device_type: go::CONTROLLERS_REGISTERED_DEVICE_TYPE.into(),
+        controllers_input_profile_path: go::CONTROLLERS_INPUT_PROFILE_PATH.into(),
+        controllers_mode_idx: go::CONTROLLERS_MODE_IDX,
         controllers_enabled: session_settings.headset.controllers.enabled,
         position_offset: settings.headset.position_offset,
         tracking_frame_offset: settings.headset.tracking_frame_offset,
@@ -391,36 +342,12 @@ async fn client_handshake(
             .controllers
             .content
             .rotation_offset_left,
-        haptics_intensity: session_settings
-            .headset
-            .controllers
-            .content
-            .haptics_intensity,
-        haptics_amplitude_curve: session_settings
-            .headset
-            .controllers
-            .content
-            .haptics_amplitude_curve,
-        haptics_min_duration: session_settings
-            .headset
-            .controllers
-            .content
-            .haptics_min_duration,
-        haptics_low_duration_amplitude_multiplier: session_settings
-            .headset
-            .controllers
-            .content
-            .haptics_low_duration_amplitude_multiplier,
-        haptics_low_duration_range: session_settings
-            .headset
-            .controllers
-            .content
-            .haptics_low_duration_range,
-        use_headset_tracking_system: session_settings
-            .headset
-            .controllers
-            .content
-            .use_headset_tracking_system,
+        haptics_intensity: go::HAPTICS_INTENSITY,
+        haptics_amplitude_curve: go::HAPTICS_AMPLITUDE_CURVE,
+        haptics_min_duration: go::HAPTICS_MIN_DURATION,
+        haptics_low_duration_amplitude_multiplier: go::HAPTICS_LOW_DURATION_AMPLITUDE_MULTIPLIER,
+        haptics_low_duration_range: go::HAPTICS_LOW_DURATION_RANGE,
+        use_headset_tracking_system: false,
         enable_foveated_rendering: session_settings.video.foveated_rendering.enabled,
         foveation_center_size_x: session_settings
             .video
@@ -924,17 +851,14 @@ async fn connection_pipeline() -> StrResult {
 
     let (playspace_sync_sender, playspace_sync_receiver) = smpsc::channel::<Vec2>();
 
-    let is_tracking_ref_only = settings.headset.tracking_ref_only;
-    if !is_tracking_ref_only {
-        // use a separate thread because SetChaperone() is blocking
-        thread::spawn(move || {
-            while let Ok(packet) = playspace_sync_receiver.recv() {
-                let width = f32::max(packet.x, 2.0);
-                let height = f32::max(packet.y, 2.0);
-                unsafe { crate::SetChaperone(width, height) };
-            }
-        });
-    }
+    // use a separate thread because SetChaperone() is blocking
+    thread::spawn(move || {
+        while let Ok(packet) = playspace_sync_receiver.recv() {
+            let width = f32::max(packet.x, 2.0);
+            let height = f32::max(packet.y, 2.0);
+            unsafe { crate::SetChaperone(width, height) };
+        }
+    });
 
     let keepalive_loop = {
         let control_sender = Arc::clone(&control_sender);
@@ -959,9 +883,7 @@ async fn connection_pipeline() -> StrResult {
         loop {
             match control_receiver.recv().await {
                 Ok(ClientControlPacket::PlayspaceSync(packet)) => {
-                    if !is_tracking_ref_only {
-                        playspace_sync_sender.send(packet).ok();
-                    }
+                    playspace_sync_sender.send(packet).ok();
                 }
                 Ok(ClientControlPacket::RequestIdr) => unsafe { crate::RequestIDR() },
                 Ok(ClientControlPacket::TimeSync(data)) => {

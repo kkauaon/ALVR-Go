@@ -1,4 +1,5 @@
 mod events;
+pub mod go_profile;
 mod settings;
 
 pub use events::*;

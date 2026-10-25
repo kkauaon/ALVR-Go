@@ -39,7 +39,7 @@ public class DecoderThread extends ThreadBase implements Handler.Callback {
     private static final int MESSAGE_INPUT_BUFFER_AVAILABLE = 2;
     private static final int MESSAGE_OUTPUT_FRAME = 3;
 
-    private Handler mHandler;
+    private volatile Handler mHandler;
 
     public interface DecoderCallback {
         void onPrepared();
@@ -347,8 +347,15 @@ public class DecoderThread extends ThreadBase implements Handler.Callback {
     }
 
     public void pushNAL(NAL nal) {
-        Message message = mHandler.obtainMessage(MESSAGE_PUSH_NAL, nal);
-        mHandler.sendMessage(message);
+        // the handler is created by the decoder thread: NALs received before it starts (or after
+        // it stopped) are dropped, the next IDR frame restarts decoding
+        Handler handler = mHandler;
+        if (handler == null) {
+            mNalQueue.recycle(nal);
+            return;
+        }
+        Message message = handler.obtainMessage(MESSAGE_PUSH_NAL, nal);
+        handler.sendMessage(message);
     }
 
     public void releaseBuffer() {

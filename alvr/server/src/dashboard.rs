@@ -316,9 +316,7 @@ impl DashboardApp {
                 let remaining = ui.available_height();
                 ui.add_space((remaining - 36.0).max(0.0));
                 if theme::sidebar_item(ui, &p, "\u{27F3}", "Restart SteamVR").clicked() {
-                    if self.settings.flag("/extra/restartConfirmDialog/enabled")
-                        || self.settings.flag("/extra/restartConfirmDialog")
-                    {
+                    if self.settings.flag("/extra/restartConfirmDialog") {
                         self.confirm_restart = true;
                     } else {
                         crate::notify_restart_driver();

@@ -92,14 +92,14 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 **Priority:** TBD | **Status:** Draft | **Dependencies:** RF-200.6
 * Video is encoded as H.264 or HEVC with a configurable bitrate in Mbit/s.
 * Hardware encoding uses NVENC, AMF VCE or VAAPI where available; software encoding uses FFmpeg/x264/x265 when built with the corresponding feature.
-* `use_10bit_encoder` selects a 10-bit encoder where supported.
+* Encoding is always 8-bit: the Go decodes no 10-bit video.
 * Forward error correction can be enabled or disabled; the client repairs packet loss and reports FEC failures.
 * The client can request an IDR frame; the server's IDR scheduler and `aggressive_keyframe_resend` setting control resend behavior.
-* The client requests a realtime decoder priority by default.
+* The client always requests the realtime, low-latency MediaCodec decoder.
 
 ### RF-300.2: Adaptive bitrate
 **Priority:** TBD | **Status:** Draft | **Dependencies:** RF-300.1
-* Adaptive bitrate is enabled by default with a 200 Mbit/s ceiling and a 12 ms latency target.
+* Adaptive bitrate is enabled by default with a 50 Mbit/s ceiling, a 25 Mbit/s starting bitrate and a 12 ms latency target (Go defaults, 60 Hz).
 * The encoder bitrate moves up or down according to measured latency, a threshold, up/down rates, and a light-load threshold.
 * An optional frametime-based mode uses a maximum latency and an offset instead of a fixed target.
 * <!-- TBD: approved latency bounds and the measurement definition used for "latency" -->
@@ -153,15 +153,12 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 
 ### RF-400.1: Device identity
 **Priority:** TBD | **Status:** Draft | **Dependencies:** none
-* Headset serial number, tracking system, model, driver version, manufacturer, render model and registered device type are configurable and exposed to OpenVR.
-* Controller identity strings, render models, input profile path, and device type are configurable, with presets for Oculus and Valve controllers.
-* Upstream ships Rift S and Valve Index controller presets; no Oculus Go controller preset exists, so the Go controller identity is an open question for this fork.
-* A controller emulation mode index selects the input mapping.
+* The driver presents the headset and controllers to OpenVR with a fixed identity (`alvr_session::go_profile`: Oculus "Miramar" headset, Oculus Touch input profile). None of it is configurable any more.
+* The Go controller is exposed through that Touch profile by the client's Go input path.
 
 ### RF-400.2: Extra tracked devices
-**Priority:** TBD | **Status:** Draft | **Dependencies:** RF-400.1
-* A Vive tracker proxy can be enabled to expose additional tracked devices.
-* The headset's tracking system can optionally be reused for controllers.
+**Priority:** TBD | **Status:** Removed | **Dependencies:** RF-400.1
+* The Vive tracker proxy and the reuse of the headset's tracking system for controllers were removed.
 
 ### RF-400.3: Chaperone
 **Priority:** TBD | **Status:** Draft | **Dependencies:** RF-300.6
@@ -189,12 +186,10 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 * <!-- TBD: the first-run wizard existed only in the web dashboard and is not ported to egui yet -->
 * The wizard opens automatically when `setupWizard` is true.
 * It covers hardware requirements and detected GPU, software requirements, firewall setup, tracking mode, a compatibility or visual-quality preset, preset import and completion.
-* The compatibility preset sets 0.75 render scale, 15 Mbit/s, FFR on, H.264 and 72 Hz; the quality preset sets 1.0 scale, 40 Mbit/s, FFR off, HEVC and 90 Hz.
 
 ### RF-500.4: Presets
-**Priority:** TBD | **Status:** Draft | **Dependencies:** RF-500.2
-* <!-- TBD: preset import is not implemented in the egui dashboard yet; the web dashboard supported uploading a JSON session file -->
-* The installation ships presets for Oculus Go and for "The Walking Dead: Saints and Sinners".
+**Priority:** TBD | **Status:** Removed | **Dependencies:** none
+* There are no presets: the defaults are the Oculus Go settings.
 
 ### RF-500.5: Localization and theme
 **Priority:** TBD | **Status:** Draft | **Dependencies:** none
@@ -255,7 +250,7 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 ### RF-700.1: Windows distribution
 **Priority:** TBD | **Status:** Draft | **Dependencies:** RF-600.2
 * `publish-server` produces a portable ZIP and, when WiX is available, an MSI and a bootstrapper bundle that wraps the MSI.
-* A portable layout keeps executables, presets, config and logs in one directory.
+* A portable layout keeps executables, config and logs in one directory.
 
 ### RF-700.2: Linux distribution
 **Priority:** TBD | **Status:** Draft | **Dependencies:** RF-600.2
@@ -325,7 +320,7 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 - [ ] Which requirements are contractual for a release, and what priority scheme should replace the uniform TBD?
 - [ ] Which Oculus Go firmware versions and VrApi builds must the fork support?
 - [ ] Should the Quest and Quest 2 flavors be removed from the fork, or kept buildable but unreleased?
-- [ ] Which controller identity should the Go controller emulate, given there is no Go preset?
+- [ ] Is the Oculus Touch / "Miramar" identity the right one for the Go controller, now that it is fixed?
 - [ ] What render resolution, refresh rate and bitrate should a Go-first default use?
 - [ ] Is authenticated or encrypted transport planned? This version has neither. (Dashboard access is no longer a network surface: the egui dashboard runs in the driver process.)
 - [ ] Which SteamVR versions must the fork support?

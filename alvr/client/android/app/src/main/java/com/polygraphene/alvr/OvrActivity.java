@@ -100,6 +100,13 @@ public class OvrActivity extends Activity {
     String mDashboardURL = null;
     String mLoadingMessage = "";
 
+    // State of the current stream. The connection to the server outlives the activity being paused
+    // (for example when going to the Oculus menu), so the parameters are kept to restart decoding
+    // and rendering when the activity comes back.
+    volatile boolean mStreamActive = false;
+    volatile int mStreamCodec = 0;
+    volatile boolean mStreamRealtimeDecoder = false;
+
     // Cache method references for performance reasons
     final Runnable mRenderRunnable = this::render;
 
@@ -205,7 +212,18 @@ public class OvrActivity extends Activity {
                 onResumeNative(NAL.class, p.hostname, p.certificatePEM, p.privateKey, mScreenSurface, p.darkMode);
 
                 onVrModeChanged(true);
+
+                // the stream was already running before the pause: resume it
+                applyStreamIfActive();
             });
+        }
+    }
+
+    // Must be called on the rendering thread.
+    void applyStreamIfActive() {
+        if (mStreamActive && mVrMode && mDecoderThread != null) {
+            onStreamStartNative();
+            mDecoderThread.onConnect(mStreamCodec, mStreamRealtimeDecoder);
         }
     }
 
@@ -226,6 +244,8 @@ public class OvrActivity extends Activity {
                 // DecoderThread must be stopped before ReceiverThread and setting mResumed=false.
                 if (mDecoderThread != null) {
                     mDecoderThread.stopAndWait();
+                    // incoming video is dropped until the activity is resumed
+                    mDecoderThread = null;
                 }
 
                 onVrModeChanged(false);
@@ -317,7 +337,7 @@ public class OvrActivity extends Activity {
 
     private void render() {
         if (mResumed && mScreenSurface != null) {
-            if (isConnectedNative()) {
+            if (isConnectedNative() && mDecoderThread != null) {
                 long renderedFrameIndex = mDecoderThread.clearAvailable(mStreamSurfaceTexture);
 
                 if (renderedFrameIndex != -1) {
@@ -401,15 +421,17 @@ public class OvrActivity extends Activity {
     public void onServerConnected(float fps, int codec, boolean realtimeDecoder, String dashboardURL) {
         mRefreshRate = fps;
         mDashboardURL = dashboardURL;
-        mRenderingHandler.post(() -> {
-            onStreamStartNative();
-            mDecoderThread.onConnect(codec, realtimeDecoder);
-        });
+        mStreamCodec = codec;
+        mStreamRealtimeDecoder = realtimeDecoder;
+        mStreamActive = true;
+        // if the activity is paused this is applied when it is resumed
+        mRenderingHandler.post(this::applyStreamIfActive);
     }
 
     @SuppressWarnings("unused")
     public void onDisconnected() {
         Utils.logi(TAG, () -> "onDisconnected is called.");
+        mStreamActive = false;
         if (mDecoderThread != null) {
             mDecoderThread.onDisconnect();
         }
