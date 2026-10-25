@@ -911,10 +911,12 @@ void onBatteryChangedNative(int battery, int plugged) {
 }
 
 GuardianData getGuardianData() {
-    std::lock_guard<std::mutex> ovrLock(g_ctx.ovrMutex);
+    // Never wait for the lock: pausing or resuming the app holds it while VR mode changes, and
+    // this is called from the connection threads.
+    std::unique_lock<std::mutex> ovrLock(g_ctx.ovrMutex, std::try_to_lock);
 
     // not in VR mode (the app is paused but the stream is kept alive): nothing to sync
-    if (g_ctx.Ovr == nullptr) {
+    if (!ovrLock.owns_lock() || g_ctx.Ovr == nullptr) {
         return GuardianData{};
     }
 
@@ -944,9 +946,11 @@ GuardianData getGuardianData() {
 }
 
 void onTrackingNative(bool clientsidePrediction) {
-    std::lock_guard<std::mutex> ovrLock(g_ctx.ovrMutex);
+    // A missed sample is harmless (they are sent several times per frame), blocking the pause or
+    // resume of the app is not.
+    std::unique_lock<std::mutex> ovrLock(g_ctx.ovrMutex, std::try_to_lock);
 
-    if (g_ctx.Ovr != nullptr) {
+    if (ovrLock.owns_lock() && g_ctx.Ovr != nullptr) {
         sendTrackingInfo(clientsidePrediction);
     }
 }

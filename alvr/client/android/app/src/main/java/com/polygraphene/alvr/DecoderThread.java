@@ -70,9 +70,22 @@ public class DecoderThread extends ThreadBase implements Handler.Callback {
     public void interrupt() {
         super.interrupt();
 
-        mHandler.getLooper().quitSafely();
+        // The handler is created by the decoder thread itself: it does not exist yet if the thread
+        // is stopped right after being started (decodeLoop() handles that case).
+        Handler handler = mHandler;
+        if (handler != null) {
+            handler.getLooper().quitSafely();
+        }
 
         mQueue.stop();
+    }
+
+    // Sets the codec the stream is going to use before the thread is started, so that onConnect()
+    // does not have to restart a thread that has just been created.
+    public void configure(int codec, boolean realtime) {
+        mCodec = codec;
+        mPriority = realtime ? 0 : 1;
+        mFormat = codec == CODEC_H264 ? VIDEO_FORMAT_H264 : VIDEO_FORMAT_H265;
     }
 
     @Override
@@ -169,6 +182,11 @@ public class DecoderThread extends ThreadBase implements Handler.Callback {
 
         Looper.prepare();
         mHandler = new Handler(this);
+
+        // stopped before the handler existed: there is nothing to loop on
+        if (isStopped()) {
+            return;
+        }
 
         mWaitNextIDR = true;
         setWaitingNextIDR(true);

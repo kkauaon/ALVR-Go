@@ -339,17 +339,23 @@ fn set_mute_windows_device(device: &AudioDevice, mute: bool) -> StrResult {
     Ok(())
 }
 
-pub fn get_sample_rate(device: &AudioDevice) -> StrResult<u32> {
-    let maybe_config_range = trace_err!(device.inner.supported_output_configs())?.next();
-    let config = if let Some(config) = maybe_config_range {
-        config
+/// The format the device is running at. Since CPAL 0.18 `supported_*_configs()` lists every format
+/// and rate the host can convert to (the first entry is 8 kHz unsigned 8-bit), so the first
+/// supported config is not the device format any more: the default config is.
+fn device_config(device: &AudioDevice) -> StrResult<cpal::SupportedStreamConfig> {
+    if let Ok(config) = device.inner.default_output_config() {
+        Ok(config)
     } else {
-        trace_none!(trace_err!(device.inner.supported_input_configs())?.next())?
-    };
+        trace_err!(device.inner.default_input_config())
+    }
+}
+
+pub fn get_sample_rate(device: &AudioDevice) -> StrResult<u32> {
+    let config = device_config(&device)?;
 
     // Assumption: device is in shared mode: this means that there is one and fixed sample rate,
     // format and channel count
-    Ok(config.min_sample_rate())
+    Ok(config.sample_rate())
 }
 
 fn f32_to_i16(sample: f32) -> i16 {
@@ -368,14 +374,9 @@ pub async fn record_audio_loop(
     mute: bool,
     mut sender: StreamSender<()>,
 ) -> StrResult {
-    let maybe_config_range = trace_err!(device.inner.supported_output_configs())?.next();
-    let config = if let Some(config) = maybe_config_range {
-        config
-    } else {
-        trace_none!(trace_err!(device.inner.supported_input_configs())?.next())?
-    };
+    let config = device_config(&device)?;
 
-    if sample_rate != config.min_sample_rate() {
+    if sample_rate != config.sample_rate() {
         return fmt_e!("Sample rate not supported");
     }
 
@@ -386,9 +387,20 @@ pub async fn record_audio_loop(
         );
     }
 
+    // anything else would be sent as garbage: only these two are converted to 16-bit below
+    if !matches!(
+        config.sample_format(),
+        SampleFormat::F32 | SampleFormat::I16
+    ) {
+        return fmt_e!(
+            "Unsupported audio sample format {:?}. Set the device to 16-bit or 32-bit float.",
+            config.sample_format()
+        );
+    }
+
     let stream_config = StreamConfig {
         channels: config.channels(),
-        sample_rate: config.min_sample_rate(),
+        sample_rate: config.sample_rate(),
         buffer_size: BufferSize::Default,
     };
 
@@ -440,7 +452,18 @@ pub async fn record_audio_loop(
                 },
                 {
                     let data_sender = data_sender.clone();
-                    move |e| {
+                    move |e: cpal::Error| {
+                        // Buffer underruns/overruns and a refused real-time priority only cause a
+                        // glitch: CPAL reports them through the error callback since 0.18, but the
+                        // stream keeps running, so they must not end the recording.
+                        if matches!(
+                            e.kind(),
+                            cpal::ErrorKind::Xrun | cpal::ErrorKind::RealtimeDenied
+                        ) {
+                            warn!("Audio recording glitch: {e}");
+                            return;
+                        }
+
                         data_sender
                             .send(fmt_e!("Error while recording audio: {e}"))
                             .ok();

@@ -104,8 +104,15 @@ pub fn build_server(
         command::run("cargo update").unwrap();
     }
 
+    // Keep the settings of the previous build: repackaging used to reset them to the defaults.
+    let previous_session = fs::read(afs::server_build_dir().join("session.json")).ok();
+
     fs::remove_dir_all(&afs::server_build_dir()).ok();
     fs::create_dir_all(&afs::server_build_dir()).unwrap();
+
+    if let Some(session) = previous_session {
+        fs::write(afs::server_build_dir().join("session.json"), session).ok();
+    }
     fs::create_dir_all(&layout.openvr_driver_lib().parent().unwrap()).unwrap();
     fs::create_dir_all(&layout.launcher_exe().parent().unwrap()).unwrap();
 
@@ -266,7 +273,7 @@ pub fn build_client(is_release: bool, is_nightly: bool, for_oculus_go: bool) {
     let command_name = if cfg!(not(windows)) {
         "./gradlew"
     } else {
-        "gradlew.bat"
+        ".\\gradlew.bat"
     };
 
     let artifact_name = format!("alvr_client_{headset_name}");

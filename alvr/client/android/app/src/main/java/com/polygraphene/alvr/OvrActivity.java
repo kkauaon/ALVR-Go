@@ -233,6 +233,9 @@ public class OvrActivity extends Activity {
                 mStreamSurfaceTexture.updateTexImage();
 
                 mDecoderThread = new DecoderThread(mStreamSurface, mDecoderCallback);
+                if (mStreamActive) {
+                    mDecoderThread.configure(mStreamCodec, mStreamRealtimeDecoder);
+                }
 
                 try {
                     mDecoderThread.start();
@@ -273,16 +276,20 @@ public class OvrActivity extends Activity {
         if (mResumed && mScreenSurface != null) {
             // DecoderThread must be stopped before ReceiverThread and setting mResumed=false.
             mRenderingHandler.post(() -> {
-                // DecoderThread must be stopped before ReceiverThread and setting mResumed=false.
-                if (mDecoderThread != null) {
-                    mDecoderThread.stopAndWait();
-                    // incoming video is dropped until the activity is resumed
-                    mDecoderThread = null;
-                }
-
+                // Leave VR mode first: the system waits for the app to do it when the headset goes
+                // to sleep or the menu opens, and stopping the hardware decoder can take long (or
+                // block) while the device is suspending. Doing it in the other order left the
+                // system stuck with a black screen.
                 onVrModeChanged(false);
 
                 onPauseNative();
+
+                DecoderThread decoderThread = mDecoderThread;
+                // incoming video is dropped until the activity is resumed
+                mDecoderThread = null;
+                if (decoderThread != null) {
+                    decoderThread.stopAndWait();
+                }
             });
         }
     }

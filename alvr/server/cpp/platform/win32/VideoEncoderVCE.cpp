@@ -7,7 +7,7 @@
 #include "alvr_server/Settings.h"
 
 #define AMF_THROW_IF(expr) {AMF_RESULT res = expr;\
-if(res != AMF_OK){throw MakeException("AMF Error %d. %s", res, L#expr);}}
+if(res != AMF_OK){throw MakeException("AMF Error %d. %ls", res, L#expr);}}
 
 const wchar_t *VideoEncoderVCE::START_TIME_PROPERTY = L"StartTimeProperty";
 const wchar_t *VideoEncoderVCE::FRAME_INDEX_PROPERTY = L"FrameIndexProperty";
@@ -58,58 +58,80 @@ AMFTextureEncoder::AMFTextureEncoder(const amf::AMFContextPtr &amfContext
 		throw MakeException("Unsupported video encoding %d", codec);
 	}
 
-	// Create encoder component.
-	AMF_THROW_IF(g_AMFFactory.GetFactory()->CreateComponent(amfContext, pCodec, &m_amfEncoder));
+	// Not every GPU/driver accepts the ultra low latency usage (for example Polaris cards such as the
+	// RX 550 refuse it for H.264 with AMF_ACCESS_DENIED), so fall back to plainer usages instead of
+	// giving up on the AMD encoder.
+	const amf_int64 usages[] = {
+		(amf_int64)(codec == ALVR_CODEC_H264 ? AMF_VIDEO_ENCODER_USAGE_ULTRA_LOW_LATENCY : AMF_VIDEO_ENCODER_HEVC_USAGE_ULTRA_LOW_LATENCY),
+		(amf_int64)(codec == ALVR_CODEC_H264 ? AMF_VIDEO_ENCODER_USAGE_LOW_LATENCY : AMF_VIDEO_ENCODER_HEVC_USAGE_LOW_LATENCY),
+		(amf_int64)(codec == ALVR_CODEC_H264 ? AMF_VIDEO_ENCODER_USAGE_TRANSCONDING : AMF_VIDEO_ENCODER_HEVC_USAGE_TRANSCONDING),
+	};
+	AMF_RESULT initResult = AMF_FAIL;
+	for (amf_int64 usage : usages) {
+		m_amfEncoder = nullptr;
+		// Create encoder component.
+		AMF_THROW_IF(g_AMFFactory.GetFactory()->CreateComponent(amfContext, pCodec, &m_amfEncoder));
 
-	if (codec == ALVR_CODEC_H264)
-	{
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_USAGE, AMF_VIDEO_ENCODER_USAGE_ULTRA_LOW_LATENCY);
-		// Explicit constant bitrate with a small buffer: bounds the size of every frame.
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD, AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_CBR);
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_TARGET_BITRATE, bitRateIn);
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_PEAK_BITRATE, bitRateIn);
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_VBV_BUFFER_SIZE, VbvBufferSizeBits(refreshRate));
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_FRAMESIZE, ::AMFConstructSize(width, height));
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_FRAMERATE, ::AMFConstructRate(frameRateIn, 1));
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_B_PIC_PATTERN, 0);
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_PROFILE, AMF_VIDEO_ENCODER_PROFILE_HIGH);
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_PROFILE_LEVEL, 51);
+		if (codec == ALVR_CODEC_H264)
+		{
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_USAGE, (amf_int64)usage);
+			// Explicit constant bitrate with a small buffer: bounds the size of every frame.
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD, AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_CBR);
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_TARGET_BITRATE, bitRateIn);
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_PEAK_BITRATE, bitRateIn);
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_VBV_BUFFER_SIZE, VbvBufferSizeBits(refreshRate));
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_FRAMESIZE, ::AMFConstructSize(width, height));
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_FRAMERATE, ::AMFConstructRate(frameRateIn, 1));
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_B_PIC_PATTERN, 0);
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_PROFILE, AMF_VIDEO_ENCODER_PROFILE_HIGH);
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_PROFILE_LEVEL, 51);
 		
-		//No noticable visual difference between PRESET_QUALITY and PRESET_SPEED but the latter has better latency when the GPU is under heavy load
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_QUALITY_PRESET, AMF_VIDEO_ENCODER_QUALITY_PRESET_SPEED);
+			//No noticable visual difference between PRESET_QUALITY and PRESET_SPEED but the latter has better latency when the GPU is under heavy load
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_QUALITY_PRESET, AMF_VIDEO_ENCODER_QUALITY_PRESET_SPEED);
 
-		//No noticable performance difference and should improve subjective quality by allocating more bits to smooth areas
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_ENABLE_VBAQ, true);
+			//No noticable performance difference and should improve subjective quality by allocating more bits to smooth areas
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_ENABLE_VBAQ, true);
 		
-		//Fixes rythmic pixelation. I-frames were overcompressed on default settings
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_MAX_QP, AVC_MAX_QP);
+			//Fixes rythmic pixelation. I-frames were overcompressed on default settings
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_MAX_QP, AVC_MAX_QP);
 
-		//Does not seem to make a difference but turned on anyway in case it does on other hardware
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_LOWLATENCY_MODE, true);
+			//Does not seem to make a difference but turned on anyway in case it does on other hardware
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_LOWLATENCY_MODE, true);
+		}
+		else
+		{
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_USAGE, (amf_int64)usage);
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD, AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD_CBR);
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_TARGET_BITRATE, bitRateIn);
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_PEAK_BITRATE, bitRateIn);
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_VBV_BUFFER_SIZE, VbvBufferSizeBits(refreshRate));
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_FRAMESIZE, ::AMFConstructSize(width, height));
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_FRAMERATE, ::AMFConstructRate(frameRateIn, 1));	
+
+			//No noticable visual difference between PRESET_QUALITY and PRESET_SPEED but the latter has better latency when the GPU is under heavy load
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_QUALITY_PRESET, AMF_VIDEO_ENCODER_HEVC_QUALITY_PRESET_SPEED);	
+
+			//No noticable performance difference and should improve subjective quality by allocating more bits to smooth areas
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_ENABLE_VBAQ, true);
+
+			//Fixes rythmic pixelation. I-frames were overcompressed on default settings
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_MAX_QP_I, HEVC_MAX_QP_I);
+
+			//Does not seem to make a difference but turned on anyway in case it does on other hardware
+			m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_LOWLATENCY_MODE, true);
+		}
+		initResult = m_amfEncoder->Init(inputFormat, width, height);
+		if (initResult == AMF_OK) {
+			if (usage != usages[0]) {
+				Warn("AMF encoder: ultra low latency usage is not supported by this GPU, using usage %d.\n", (int)usage);
+			}
+			break;
+		}
+		Warn("AMF encoder: initialization with usage %d failed (AMF error %d).\n", (int)usage, (int)initResult);
 	}
-	else
-	{
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_USAGE, AMF_VIDEO_ENCODER_HEVC_USAGE_ULTRA_LOW_LATENCY);
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD, AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD_CBR);
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_TARGET_BITRATE, bitRateIn);
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_PEAK_BITRATE, bitRateIn);
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_VBV_BUFFER_SIZE, VbvBufferSizeBits(refreshRate));
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_FRAMESIZE, ::AMFConstructSize(width, height));
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_FRAMERATE, ::AMFConstructRate(frameRateIn, 1));	
-
-		//No noticable visual difference between PRESET_QUALITY and PRESET_SPEED but the latter has better latency when the GPU is under heavy load
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_QUALITY_PRESET, AMF_VIDEO_ENCODER_HEVC_QUALITY_PRESET_SPEED);	
-
-		//No noticable performance difference and should improve subjective quality by allocating more bits to smooth areas
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_ENABLE_VBAQ, true);
-
-		//Fixes rythmic pixelation. I-frames were overcompressed on default settings
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_MAX_QP_I, HEVC_MAX_QP_I);
-
-		//Does not seem to make a difference but turned on anyway in case it does on other hardware
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_LOWLATENCY_MODE, true);
+	if (initResult != AMF_OK) {
+		throw MakeException("AMF Error %d. %s", initResult, "m_amfEncoder->Init");
 	}
-	AMF_THROW_IF(m_amfEncoder->Init(inputFormat, width, height));
 
 	Debug("Initialized AMFTextureEncoder.\n");
 }
