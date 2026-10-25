@@ -1,5 +1,7 @@
 #include "VideoEncoderVCE.h"
 
+#include <algorithm>
+
 #include "alvr_server/Statistics.h"
 #include "alvr_server/Logger.h"
 #include "alvr_server/Settings.h"
@@ -9,6 +11,27 @@ if(res != AMF_OK){throw MakeException("AMF Error %d. %s", res, L#expr);}}
 
 const wchar_t *VideoEncoderVCE::START_TIME_PROPERTY = L"StartTimeProperty";
 const wchar_t *VideoEncoderVCE::FRAME_INDEX_PROPERTY = L"FrameIndexProperty";
+
+namespace {
+	// Quantizer ceilings. They stop the encoder from over-compressing keyframes ("rhythmic
+	// pixelation"), but a ceiling that is too low makes the encoder overshoot its bitrate whenever
+	// the picture is complex: the oversized frames flood the Wi-Fi link, packets get lost, the
+	// adaptive bitrate collapses and the image turns into blocks. H.264 can only cap all frame
+	// types at once, so it uses a looser value than the HEVC keyframe cap.
+	const int AVC_MAX_QP = 36;
+	const int HEVC_MAX_QP_I = 34;
+
+	// The VBV buffer is sized for the highest bitrate the adaptive bitrate can reach and cannot be
+	// changed once the encoder is running.
+	amf_int64 VbvBufferSizeBits(int refreshRate) {
+		uint64_t maxMbps = Settings::Instance().mEncodeBitrateMBs;
+		if (Settings::Instance().m_enableAdaptiveBitrate) {
+			maxMbps = std::max<uint64_t>(maxMbps, Settings::Instance().m_adaptiveBitrateMaximum);
+		}
+		// about one and a half frames at that bitrate
+		return static_cast<amf_int64>(maxMbps * 1000000L / refreshRate * 3 / 2);
+	}
+}
 
 //
 // AMFTextureEncoder
@@ -41,7 +64,11 @@ AMFTextureEncoder::AMFTextureEncoder(const amf::AMFContextPtr &amfContext
 	if (codec == ALVR_CODEC_H264)
 	{
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_USAGE, AMF_VIDEO_ENCODER_USAGE_ULTRA_LOW_LATENCY);
+		// Explicit constant bitrate with a small buffer: bounds the size of every frame.
+		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD, AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_CBR);
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_TARGET_BITRATE, bitRateIn);
+		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_PEAK_BITRATE, bitRateIn);
+		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_VBV_BUFFER_SIZE, VbvBufferSizeBits(refreshRate));
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_FRAMESIZE, ::AMFConstructSize(width, height));
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_FRAMERATE, ::AMFConstructRate(frameRateIn, 1));
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_B_PIC_PATTERN, 0);
@@ -55,7 +82,7 @@ AMFTextureEncoder::AMFTextureEncoder(const amf::AMFContextPtr &amfContext
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_ENABLE_VBAQ, true);
 		
 		//Fixes rythmic pixelation. I-frames were overcompressed on default settings
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_MAX_QP, 30);
+		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_MAX_QP, AVC_MAX_QP);
 
 		//Does not seem to make a difference but turned on anyway in case it does on other hardware
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_LOWLATENCY_MODE, true);
@@ -63,7 +90,10 @@ AMFTextureEncoder::AMFTextureEncoder(const amf::AMFContextPtr &amfContext
 	else
 	{
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_USAGE, AMF_VIDEO_ENCODER_HEVC_USAGE_ULTRA_LOW_LATENCY);
+		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD, AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD_CBR);
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_TARGET_BITRATE, bitRateIn);
+		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_PEAK_BITRATE, bitRateIn);
+		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_VBV_BUFFER_SIZE, VbvBufferSizeBits(refreshRate));
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_FRAMESIZE, ::AMFConstructSize(width, height));
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_FRAMERATE, ::AMFConstructRate(frameRateIn, 1));	
 
@@ -74,7 +104,7 @@ AMFTextureEncoder::AMFTextureEncoder(const amf::AMFContextPtr &amfContext
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_ENABLE_VBAQ, true);
 
 		//Fixes rythmic pixelation. I-frames were overcompressed on default settings
-		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_MAX_QP_I, 30);
+		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_MAX_QP_I, HEVC_MAX_QP_I);
 
 		//Does not seem to make a difference but turned on anyway in case it does on other hardware
 		m_amfEncoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_LOWLATENCY_MODE, true);
@@ -302,10 +332,12 @@ void VideoEncoderVCE::Transmit(ID3D11Texture2D *pTexture, uint64_t presentationT
 			if (m_codec == ALVR_CODEC_H264)
 			{
 				m_encoder->Get()->SetProperty(AMF_VIDEO_ENCODER_TARGET_BITRATE, bitRateIn);
+				m_encoder->Get()->SetProperty(AMF_VIDEO_ENCODER_PEAK_BITRATE, bitRateIn);
 			}
 			else
 			{
 				m_encoder->Get()->SetProperty(AMF_VIDEO_ENCODER_HEVC_TARGET_BITRATE, bitRateIn);
+				m_encoder->Get()->SetProperty(AMF_VIDEO_ENCODER_HEVC_PEAK_BITRATE, bitRateIn);
 			}
 		}
 	}

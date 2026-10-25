@@ -99,7 +99,7 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 
 ### RF-300.2: Adaptive bitrate
 **Priority:** TBD | **Status:** Draft | **Dependencies:** RF-300.1
-* Adaptive bitrate is enabled by default with a 50 Mbit/s ceiling, a 25 Mbit/s starting bitrate and a 12 ms latency target (Go defaults, 60 Hz).
+* Adaptive bitrate is enabled by default with a 50 Mbit/s ceiling, a 25 Mbit/s starting bitrate and a 15 ms latency target (Go defaults, 60 Hz).
 * The encoder bitrate moves up or down according to measured latency, a threshold, up/down rates, and a light-load threshold.
 * An optional frametime-based mode uses a maximum latency and an offset instead of a fixed target.
 * <!-- TBD: approved latency bounds and the measurement definition used for "latency" -->

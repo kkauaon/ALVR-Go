@@ -181,6 +181,8 @@ SteamVR composites the game frame. On Windows, `OvrDirectModeComponent` receives
 
 The client reports time sync and latency data on the control socket. The server forwards it to the C++ `TimeSyncReceive`, where `Statistics` uses the reported latency against the adaptive-bitrate target to raise or lower the encoder bitrate within the configured maximum. Legacy statistics events are emitted as log lines and forwarded to the dashboard through the in-process event channel; the monitor plots total, encode, transport and decode latency plus client and server FPS.
 
+The adaptive bitrate is re-evaluated every 250 ms (not per frame) and never goes below half the starting bitrate (at least 10 Mbit/s); it may climb back even when the encoder under-uses its budget. On AMD the AMF encoder runs in explicit CBR with peak bitrate equal to target and a VBV buffer of about 1.5 frames at the adaptive ceiling, with quantizer ceilings (`AVC_MAX_QP`, `HEVC_MAX_QP_I`) in `VideoEncoderVCE.cpp`; NVENC uses spatial AQ. FEC starts at 10% parity and grows to 20% on repeated failures.
+
 ### 8. Settings and shutdown
 
 The dashboard's Settings tab saves its draft through `merge_from_json`. `SessionManager` merges them into `SessionDesc`, writes `session.json`, and broadcasts a `Session` event. Changes that affect `OpenvrConfig` take effect on the next connection, which triggers a SteamVR restart. There is no update system: new versions are installed manually. Closing the dashboard window shuts down the runtime and calls `ShutdownSteamvr`.

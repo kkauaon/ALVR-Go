@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <stdint.h>
 #include <time.h>
 
@@ -106,21 +107,16 @@ public:
 		return m_sendLatency;
 	}
 
+	// Called by the encoder for every frame. The bitrate is only re-evaluated every
+	// BITRATE_CHECK_INTERVAL: it used to be re-evaluated (and the encoder reconfigured) on every
+	// frame, so a single network hiccup dropped the bitrate to its floor within a few frames and the
+	// image stayed blocky for a long time afterwards.
 	bool CheckBitrateUpdated() {
 		if (m_enableAdaptiveBitrate) {
-			uint64_t latencyUs = m_sendLatency;
-			if (latencyUs != 0) {
-				if (latencyUs > m_adaptiveBitrateTarget + m_adaptiveBitrateThreshold) {
-					if (m_bitrate < 5 + m_adaptiveBitrateDownRate)
-						m_bitrate = 5;
-					else
-						m_bitrate -= m_adaptiveBitrateDownRate;
-				} else if (latencyUs < m_adaptiveBitrateTarget - m_adaptiveBitrateThreshold) {
-					if (m_bitrate > m_adaptiveBitrateMaximum - m_adaptiveBitrateDownRate)
-						m_bitrate = m_adaptiveBitrateMaximum;
-					else if (m_bitsSentInSecondPrev * 1e-6 > m_bitrate * m_adaptiveBitrateLightLoadThreshold * (m_framesPrevious == 0 ? m_refreshRate : m_framesPrevious) / m_refreshRate)
-						m_bitrate += m_adaptiveBitrateUpRate;
-				}
+			auto now = std::chrono::steady_clock::now();
+			if (now - m_lastBitrateCheck >= BITRATE_CHECK_INTERVAL) {
+				m_lastBitrateCheck = now;
+				UpdateAdaptiveBitrate();
 			}
 			if (m_bitrateUpdated != m_bitrate) {
 				m_bitrateUpdated = m_bitrate;
@@ -155,6 +151,38 @@ public:
 	float m_rightControllerBattery;
 
 private:
+	// Never go below this: under it the stream is unwatchable, it is better to let latency grow.
+	static uint64_t MinimumBitrate(uint64_t initial) {
+		return std::min<uint64_t>(initial, std::max<uint64_t>(10, initial / 2));
+	}
+
+	void UpdateAdaptiveBitrate() {
+		uint64_t latencyUs = m_sendLatency;
+		if (latencyUs == 0) {
+			return;
+		}
+
+		uint64_t minimum = MinimumBitrate(m_initialBitrate);
+		uint64_t maximum = std::max(m_adaptiveBitrateMaximum, minimum);
+
+		if (latencyUs > m_adaptiveBitrateTarget + m_adaptiveBitrateThreshold) {
+			if (m_bitrate < minimum + m_adaptiveBitrateDownRate)
+				m_bitrate = minimum;
+			else
+				m_bitrate -= m_adaptiveBitrateDownRate;
+		} else if (latencyUs + m_adaptiveBitrateThreshold < m_adaptiveBitrateTarget) {
+			// Climbing is skipped while the encoder does not even use the current bitrate (static
+			// scenes). That check must not apply to a bitrate that was lowered, otherwise it could
+			// stay at the floor forever once the content is simple.
+			bool recovering = m_bitrate < m_initialBitrate;
+			bool lightLoad = m_bitsSentInSecondPrev * 1e-6 <= m_bitrate * m_adaptiveBitrateLightLoadThreshold * (m_framesPrevious == 0 ? m_refreshRate : m_framesPrevious) / m_refreshRate;
+			if (m_bitrate + m_adaptiveBitrateUpRate >= maximum)
+				m_bitrate = maximum;
+			else if (recovering || !lightLoad)
+				m_bitrate += m_adaptiveBitrateUpRate;
+		}
+	}
+
 	void ResetSecond() {
 		m_packetsSentInSecondPrev = m_packetsSentInSecond;
 		m_bitsSentInSecondPrev = m_bitsSentInSecond;
@@ -214,6 +242,10 @@ private:
 
 	uint64_t m_bitrate = Settings::Instance().mEncodeBitrateMBs;
 	uint64_t m_bitrateUpdated = Settings::Instance().mEncodeBitrateMBs;
+	uint64_t m_initialBitrate = Settings::Instance().mEncodeBitrateMBs;
+
+	static constexpr std::chrono::milliseconds BITRATE_CHECK_INTERVAL{250};
+	std::chrono::steady_clock::time_point m_lastBitrateCheck{};
 
 	int64_t m_refreshRate = Settings::Instance().m_refreshRate;
 

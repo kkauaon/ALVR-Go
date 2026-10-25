@@ -443,7 +443,7 @@ pub fn session_settings_default() -> SettingsDefault {
                 enabled: true,
                 content: AdaptiveBitrateDescDefault {
                     bitrate_maximum: 50,
-                    latency_target: 12000,
+                    latency_target: 15000,
                     latency_use_frametime: SwitchDefault {
                         enabled: false,
                         content: LatencyUseFrametimeDescDefault {

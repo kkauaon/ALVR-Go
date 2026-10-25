@@ -217,8 +217,11 @@ void VideoEncoderNVENC::FillEncodeConfig(NV_ENC_INITIALIZE_PARAMS &initializePar
 	encodeConfig.rcParams.maxBitRate = static_cast<uint32_t>(bitrateBits);
 	encodeConfig.rcParams.averageBitRate = static_cast<uint32_t>(bitrateBits);
 
+	// Spatial adaptive quantization spends the bits where the eye sees blocking (gradients, flat
+	// areas) at no latency cost.
+	encodeConfig.rcParams.enableAQ = 1;
+
 	if (Settings::Instance().m_use10bitEncoder) {
-		encodeConfig.rcParams.enableAQ = 1;
 		encodeConfig.encodeCodecConfig.hevcConfig.pixelBitDepthMinus8 = 2;
 	}
 }
