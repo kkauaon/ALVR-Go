@@ -16,3 +16,9 @@ members = [
     "alvr/vulkan-layer",
     "alvr/xtask",
 ]
+
+[profile.release]
+# Whole-program optimization of the networking and rendering paths; symbols only bloat the driver DLL.
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

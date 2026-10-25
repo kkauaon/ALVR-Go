@@ -49,6 +49,27 @@ pub mod wire {
     }
 }
 
+/// Binds the UDP socket of a video/audio stream with big kernel buffers.
+///
+/// A keyframe is hundreds of 1400 byte datagrams sent back to back. With the default buffers of
+/// Windows and Android part of that burst is dropped, forward error correction fails, the client
+/// asks for another keyframe (another burst) and the adaptive bitrate collapses. The sizes are a
+/// request: the OS may grant less, which is fine.
+pub(crate) async fn bind_stream_udp_socket(port: u16) -> StrResult<tokio::net::UdpSocket> {
+    use socket2::{Domain, Protocol, Socket, Type};
+
+    const RECEIVE_BUFFER_BYTES: usize = 4 * 1024 * 1024;
+    const SEND_BUFFER_BYTES: usize = 2 * 1024 * 1024;
+
+    let socket = trace_err!(Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)))?;
+    socket.set_recv_buffer_size(RECEIVE_BUFFER_BYTES).ok();
+    socket.set_send_buffer_size(SEND_BUFFER_BYTES).ok();
+    trace_err!(socket.set_nonblocking(true))?;
+    trace_err!(socket.bind(&std::net::SocketAddr::new(LOCAL_IP, port).into()))?;
+
+    trace_err!(tokio::net::UdpSocket::from_std(socket.into()))
+}
+
 type Ldc = tokio_util::codec::LengthDelimitedCodec;
 
 #[derive(Serialize, Deserialize, Clone)]

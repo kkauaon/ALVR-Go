@@ -337,6 +337,7 @@ dependencies = [
  "rand 0.10.3",
  "rcgen",
  "serde",
+ "socket2",
  "tokio",
  "tokio-util",
 ]

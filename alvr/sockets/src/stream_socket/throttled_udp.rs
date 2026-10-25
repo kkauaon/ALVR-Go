@@ -1,5 +1,4 @@
 use super::StreamId;
-use crate::LOCAL_IP;
 use alvr_common::prelude::*;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::{Stream, StreamExt};
@@ -94,7 +93,7 @@ pub async fn connect_to_client(
     ThrottledUdpStreamReceiveSocket,
 )> {
     let client_addr: SocketAddr = (client_ip, port).into();
-    let socket = trace_err!(UdpSocket::bind((LOCAL_IP, port)).await)?;
+    let socket = crate::bind_stream_udp_socket(port).await?;
     trace_err!(socket.connect(client_addr).await)?;
 
     let rx = Arc::new(socket);
@@ -124,7 +123,7 @@ pub async fn connect_to_client(
 }
 
 pub async fn listen_for_server(port: u16) -> StrResult<UdpSocket> {
-    trace_err!(UdpSocket::bind((LOCAL_IP, port)).await)
+    crate::bind_stream_udp_socket(port).await
 }
 
 pub async fn accept_from_server(

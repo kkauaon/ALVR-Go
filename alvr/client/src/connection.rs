@@ -611,7 +611,11 @@ async fn connection_pipeline(
         }
     });
 
-    let tracking_interval = Duration::from_secs_f32(1_f32 / 360_f32);
+    // Three samples per displayed frame are plenty to interpolate the pose the server asks for, and
+    // sending them is not free: each one is a small packet competing with the video for airtime
+    // and a serialization on a slow CPU.
+    let tracking_rate = (config_packet.fps * 3_f32).clamp(60_f32, 360_f32);
+    let tracking_interval = Duration::from_secs_f32(1_f32 / tracking_rate);
     let tracking_loop = async move {
         let mut deadline = Instant::now();
         loop {

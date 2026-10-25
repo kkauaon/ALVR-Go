@@ -16,6 +16,7 @@ class ClientConnection {
 public:
 
 	ClientConnection();
+	~ClientConnection();
 
 	void FECSend(uint8_t *buf, int len, uint64_t targetTimestampNs, uint64_t videoFrameIndex);
 	void SendVideo(uint8_t *buf, int len, uint64_t targetTimestampNs);
@@ -37,6 +38,12 @@ public:
 	static const int INITIAL_FEC_PERCENTAGE = 10;
 	static const int MAX_FEC_PERCENTAGE = 20;
 	int m_fecPercentage = INITIAL_FEC_PERCENTAGE;
+
+	// The Reed-Solomon codec only depends on the number of data and parity shards, which almost never
+	// changes between frames: keep the last one instead of rebuilding its matrices for every frame.
+	reed_solomon *m_rs = nullptr;
+	int m_rsDataShards = 0;
+	int m_rsParityShards = 0;
 
 	uint64_t mVideoFrameIndex = 1;
 

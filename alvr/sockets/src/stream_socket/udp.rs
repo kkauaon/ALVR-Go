@@ -1,5 +1,5 @@
 use super::StreamId;
-use crate::{Ldc, LOCAL_IP};
+use crate::Ldc;
 use alvr_common::prelude::*;
 use bytes::{Buf, Bytes, BytesMut};
 use futures::{
@@ -32,7 +32,7 @@ pub struct UdpStreamReceiveSocket {
 }
 
 pub async fn bind(port: u16) -> StrResult<UdpSocket> {
-    trace_err!(UdpSocket::bind((LOCAL_IP, port)).await)
+    crate::bind_stream_udp_socket(port).await
 }
 
 pub async fn connect(

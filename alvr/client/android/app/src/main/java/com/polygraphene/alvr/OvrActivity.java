@@ -12,6 +12,8 @@ import android.content.res.AssetManager;
 import android.graphics.SurfaceTexture;
 import android.media.AudioManager;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.opengl.EGL14;
 import android.opengl.EGLContext;
 import android.os.BatteryManager;
@@ -93,6 +95,7 @@ public class OvrActivity extends Activity {
     SurfaceTexture mStreamSurfaceTexture;
     Surface mStreamSurface;
     final LoadingTexture mLoadingTexture = new LoadingTexture();
+    WifiManager.WifiLock mWifiLock;
     DecoderThread mDecoderThread = null;
     EGLContext mEGLContext;
     boolean mVrMode = false;
@@ -132,7 +135,36 @@ public class OvrActivity extends Activity {
         holder.addCallback(new RenderingCallbacks());
 
         requestAudioPermissions();
+        acquireWifiLock();
         this.registerReceiver(this.mBatInfoReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+    }
+
+    // Without this lock Android may put the Wi-Fi radio in power save mode, which shows up as
+    // periodic latency spikes in the stream. The connection outlives pauses of the activity, so the
+    // lock is held until the activity is destroyed.
+    @SuppressWarnings("deprecation")
+    private void acquireWifiLock() {
+        try {
+            WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wifiManager == null) {
+                return;
+            }
+            int mode = Build.VERSION.SDK_INT >= 29
+                    ? WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                    : WifiManager.WIFI_MODE_FULL_HIGH_PERF;
+            mWifiLock = wifiManager.createWifiLock(mode, "ALVR");
+            mWifiLock.setReferenceCounted(false);
+            mWifiLock.acquire();
+        } catch (SecurityException e) {
+            Utils.loge(TAG, e::toString);
+        }
+    }
+
+    private void releaseWifiLock() {
+        if (mWifiLock != null && mWifiLock.isHeld()) {
+            mWifiLock.release();
+        }
+        mWifiLock = null;
     }
 
     // This method initializes a GL context, and must be called within the scope of the rendering
@@ -258,6 +290,7 @@ public class OvrActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        releaseWifiLock();
         Semaphore sem = new Semaphore(1);
         try {
             sem.acquire();
@@ -351,7 +384,7 @@ public class OvrActivity extends Activity {
 
                 renderLoadingNative();
                 mRenderingHandler.removeCallbacks(mRenderRunnable);
-                mRenderingHandler.postDelayed(mRenderRunnable, (long) (1f / mRefreshRate));
+                mRenderingHandler.postDelayed(mRenderRunnable, (long) (1000f / mRefreshRate));
             }
         }
     }

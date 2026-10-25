@@ -22,6 +22,12 @@ ClientConnection::ClientConnection() : m_LastStatisticsUpdate(0) {
 	m_Statistics->ResetAll();
 }
 
+ClientConnection::~ClientConnection() {
+	if (m_rs != nullptr) {
+		reed_solomon_release(m_rs);
+	}
+}
+
 void ClientConnection::FECSend(uint8_t *buf, int len, uint64_t targetTimestampNs, uint64_t videoFrameIndex) {
 	int shardPackets = CalculateFECShardPackets(len, m_fecPercentage);
 
@@ -36,7 +42,15 @@ void ClientConnection::FECSend(uint8_t *buf, int len, uint64_t targetTimestampNs
 	Debug("reed_solomon_new. dataShards=%d totalParityShards=%d totalShards=%d blockSize=%d shardPackets=%d\n"
 		, dataShards, totalParityShards, totalShards, blockSize, shardPackets);
 
-	reed_solomon *rs = reed_solomon_new(dataShards, totalParityShards);
+	if (m_rs == nullptr || m_rsDataShards != dataShards || m_rsParityShards != totalParityShards) {
+		if (m_rs != nullptr) {
+			reed_solomon_release(m_rs);
+		}
+		m_rs = reed_solomon_new(dataShards, totalParityShards);
+		m_rsDataShards = dataShards;
+		m_rsParityShards = totalParityShards;
+	}
+	reed_solomon *rs = m_rs;
 
 	std::vector<uint8_t *> shards(totalShards);
 
@@ -55,8 +69,6 @@ void ClientConnection::FECSend(uint8_t *buf, int len, uint64_t targetTimestampNs
 
 	int ret = reed_solomon_encode(rs, &shards[0], totalShards, blockSize);
 	assert(ret == 0);
-
-	reed_solomon_release(rs);
 
 	uint8_t packetBuffer[2000];
 	VideoFrame *header = (VideoFrame *)packetBuffer;
