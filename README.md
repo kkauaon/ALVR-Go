@@ -1,40 +1,46 @@
 <p align="center"> <img width="500" src="resources/alvr_combined_logo_hq.png"/> </p>
 
-# ALVR - Air Light VR
+# ALVR-Go
 
-[![badge-discord][]][link-discord] [![badge-matrix][]][link-matrix] [![badge-opencollective][]][link-opencollective]
+A fork of [ALVR](https://github.com/alvr-org/ALVR) 18.2.3 aimed only at the **Oculus Go**: stream SteamVR games from your PC to the headset over Wi-Fi.
 
-Stream VR games from your PC to your headset via Wi-Fi.  
-ALVR uses technologies like [Asynchronous Timewarp](https://developer.oculus.com/documentation/native/android/mobile-timewarp-overview) and [Fixed Foveated Rendering](https://developer.oculus.com/documentation/native/android/mobile-ffr) for a smoother experience.  
-All games that work with an Oculus Rift (s) should work with ALVR.  
-This is a fork of [ALVR](https://github.com/polygraphene/ALVR).
+ALVR uses technologies like [Asynchronous Timewarp](https://developer.oculus.com/documentation/native/android/mobile-timewarp-overview) and [Fixed Foveated Rendering](https://developer.oculus.com/documentation/native/android/mobile-ffr) for a smoother experience. All games that work with an Oculus Rift (s) should work with ALVR.
 
-|    Headset     |                        Support                         |
-| :------------: | :----------------------------------------------------: |
-|  Oculus Quest  |                   :heavy_check_mark:                   |
-| Oculus Quest 2 |                   :heavy_check_mark:                   |
-|   Oculus Go    |                   :heavy_check_mark:                   |
-|     GearVR     | :x: (use [this](https://github.com/polygraphene/ALVR)) |
+> **Status:** the fork builds, but it has been tested on a limited setup (Windows server with an AMD GPU). There are no pre-built releases yet, so you have to [build it from source](#build-from-source). Quest and Quest 2 are not supported by this fork.
+
+## What is different from upstream ALVR 18.2.3
+
+-   **Go-only defaults**: 60 Hz, H.264, 25 Mbit/s starting bitrate (adaptive, capped at 50 Mbit/s). Settings that only make sense for other headsets (device emulation, hand tracking, Vive trackers, haptics tuning, 10-bit encoding...) and the presets were removed.
+-   **Oculus Go controller mapped to an Oculus Touch layout** (see [below](#oculus-go-controller)).
+-   **Native egui desktop UI**: the launcher and the dashboard are native windows. The web dashboard, the embedded Chromium and the GTK/Druid launcher were removed, so no browser is needed.
+-   **No update system**: no update check, no installer download. New versions are installed manually.
+-   **A more robust stream**: adaptive bitrate re-evaluated every 250 ms, explicit CBR on AMD AMF (with fallback to plainer AMF usages for older cards such as the RX 550), spatial AQ on NVENC, bigger UDP socket buffers, a Wi-Fi high-performance lock on the headset and a cached FEC codec.
+-   **The connection survives the Oculus menu**: pausing the app no longer drops the stream or shows the pairing screen again, and waking the Go no longer ends in a black screen.
+-   **Fixed game audio capture** with current CPAL versions.
+-   **Updated toolchain**: every Rust dependency, Gradle 9 / AGP 9, NDK 27 and JDK 21.
+
+The wire protocol is unchanged, so the client and server of this fork are meant to be used together. See [docs/](docs/README.md) for the architecture, requirements and the fork direction.
 
 ## Requirements
 
--   Oculus Quest, Oculus Quest 2 or Oculus Go on the latest firmware  
+-   Oculus Go on the latest firmware  
 
 -   SteamVR  
 
--   High-end gaming PC
-    -   Windows 10 May 2020 update is recommended. A browser is no longer needed: the dashboard is a native window.  
-    -   Minimum supported OS version is Windows 8.  
-    -   NVIDIA GPU that supports NVENC ([Supported GPUs](https://github.com/polygraphene/ALVR/wiki/Supported-GPU)) (or with an AMD GPU that supports AMF VCE) with the latest driver.  
-    -   Laptops with an onboard (Intel HD, AMD iGPU) and an additional dedicated GPU (NVidia GTX/RTX, AMD HD/R5/R7): you should assign the dedicated GPU or "high performance graphics adapter" to the applications ALVR, SteamVR for best performance and compatibility. (NVidia: Nvidia control panel->3d settings->application settings; AMD: similiar way) 
+-   A gaming PC with Windows 10 or newer (Linux server code is inherited from upstream but has not been tested in this fork)
+    -   NVIDIA GPU that supports NVENC, or an AMD GPU that supports AMF VCE, with the latest driver.  
+    -   Laptops with an onboard (Intel HD, AMD iGPU) and an additional dedicated GPU: assign the dedicated GPU or "high performance graphics adapter" to ALVR and SteamVR for best performance and compatibility.
 
--   802.11ac 5Ghz wireless or ethernet wired connection  
-    -   It is recommended to use 802.11ac 5Ghz for the headset and ethernet for PC  
-    -   You need to connect both the PC and the headset to same router (or use a routed connection as described [here](https://github.com/alvr-org/ALVR/wiki/ALVR-client-and-server-on-separate-networks))
+-   802.11ac 5Ghz wireless on the headset and, ideally, ethernet on the PC  
+    -   Both devices must be on the same router (or use a routed connection as described [here](https://github.com/alvr-org/ALVR/wiki/ALVR-client-and-server-on-separate-networks))
 
 ## Install
 
-Follow the installation guide [here](https://github.com/alvr-org/ALVR/wiki/Installation).
+There are no pre-built releases yet. Build the server and the client as described in [Build from source](#build-from-source), then:
+
+1.  Install the APK on the Go (`adb install -r <apk>`; the Go needs developer mode enabled).
+2.  Run `ALVR Launcher.exe` on the PC. It registers the driver, starts SteamVR and opens the dashboard.
+3.  Start ALVR on the headset and add it as a client in the dashboard.
 
 ## Oculus Go controller
 
@@ -52,40 +58,37 @@ The Go controller only has a trigger, a clickable trackpad and a back button (it
 
 -   The part of the trackpad that is clicked is chosen when the click starts and does not change if the finger slides. While the grip or menu edge is pressed the thumbstick is held at zero.  
 -   The edges are the top and bottom 30% of the trackpad and the hold time is 0.7 s. They are the constants `GO_TRACKPAD_TOP_EDGE`, `GO_TRACKPAD_BOTTOM_EDGE` and `GO_BACK_LONG_PRESS_DURATION` at the top of `alvr/client/android/app/src/main/cpp/ovr_context.cpp`.  
--   The mapping was written from the code and has not been tried on a real controller yet.  
+-   The mapping has not been validated with extended play on a real controller yet; please report problems.  
 
 ## Troubleshooting
 
--   Please check the [Troubleshooting](https://github.com/alvr-org/ALVR/wiki/Troubleshooting) page. The original repository [wiki](https://github.com/polygraphene/ALVR/wiki/Troubleshooting) can also help.  
--   Configuration recommendations and information may be found [here](https://github.com/alvr-org/ALVR/wiki/Configuration-Information-and-Recommendations)
+-   The upstream [Troubleshooting](https://github.com/alvr-org/ALVR/wiki/Troubleshooting) page and [configuration recommendations](https://github.com/alvr-org/ALVR/wiki/Configuration-Information-and-Recommendations) mostly still apply, but they describe upstream and do not cover this fork's changes.  
+-   For problems specific to this fork, open an issue in this repository and attach `session_log.txt` from the ALVR folder.
 
 ## Uninstall
 
-Open `ALVR Launcher.exe`, go to `Installation` tab then press `Remove firewall rules`. Close ALVR window and delete the ALVR folder.
-
-If you have a version prior to v12.0 you need to launch `remove_firewall_rules.bat` and `driver_uninstall.bat` in the installation folder.
+Open `ALVR Launcher.exe`, go to the `Installation` tab and press `Remove firewall rules`. Close the ALVR window and delete the ALVR folder. Uninstall the APK from the headset.
 
 ## Build from source
 
-You can follow the guide [here](https://github.com/alvr-org/ALVR/wiki/Building-From-Source).
+Requirements and commands are in [docs/project.md](docs/project.md#build--test). In short (Windows):
+
+```bash
+cargo xtask build-server --release
+cargo xtask build-android-deps
+cargo xtask build-client --oculus-go
+```
+
+The output goes to `build/`. You need Rust, a C++ toolchain, libclang, JDK 21, the Android SDK and NDK 27.1.12297006.
 
 ## License
 
-ALVR is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE). It is a fork of ALVR, by polygraphene and the alvr-org contributors, and keeps their copyright notices. Third-party components keep their own licenses (see the `LICENSE-*` files under `alvr/server`). The Oculus VrApi libraries in the client are proprietary and are redistributed as in upstream ALVR.
 
 ## Privacy policy
 
-ALVR apps do not directly collect any kind of data.
+ALVR apps do not directly collect any kind of data, and this fork makes no network requests of its own.
 
-## Donate
+## Credits
 
-If you want to support this project you can make a donation to our [Open Source Collective account](https://opencollective.com/alvr).
-
-You can also donate to the original author of ALVR using Paypal (polygraphene@gmail.com) or with bitcoin (1FCbmFVSjsmpnAj6oLx2EhnzQzzhyxTLEv).
-
-[badge-discord]: https://img.shields.io/discord/720612397580025886?style=for-the-badge&logo=discord&color=5865F2 "Join us on Discord"
-[link-discord]: https://discord.gg/ALVR
-[badge-matrix]: https://img.shields.io/static/v1?label=chat&message=%23alvr&style=for-the-badge&logo=matrix&color=blueviolet "Join us on Matrix"
-[link-matrix]: https://matrix.to/#/#alvr:ckie.dev?via=ckie.dev
-[badge-opencollective]: https://img.shields.io/opencollective/all/alvr?style=for-the-badge&logo=opencollective&color=79a3e6 "Donate"
-[link-opencollective]: https://opencollective.com/alvr
+ALVR was created by [polygraphene](https://github.com/polygraphene/ALVR) and is maintained by [alvr-org](https://github.com/alvr-org/ALVR). If you want to support the original project, you can donate to its [Open Source Collective account](https://opencollective.com/alvr).

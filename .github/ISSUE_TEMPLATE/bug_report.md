@@ -14,8 +14,8 @@ assignees: ''
 <!-- Please add a brief summary of your issue -->
 
 ## General Troubleshooting
-- [ ] I carefully followed the instructions in the [README](https://github.com/alvr-org/ALVR/blob/master/README.md) and successfully completed the setup wizard
-- [ ] I read the ALVR Wikis [here](https://github.com/polygraphene/ALVR/wiki) and [here](https://github.com/alvr-org/ALVR/wiki)
+- [ ] I carefully followed the instructions in the [README](https://github.com/kkauaon/ALVR-Go/blob/master/README.md) and built the server and client from the same revision
+- [ ] I read the [docs](https://github.com/kkauaon/ALVR-Go/tree/master/docs) and the upstream ALVR [wiki](https://github.com/alvr-org/ALVR/wiki)
 
 ## Environement
 

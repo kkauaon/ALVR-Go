@@ -1,6 +1,6 @@
-# Vision: ALVR for Oculus Go (fork of 18.2.3)
+# Vision: ALVR-Go, ALVR for Oculus Go (fork of 18.2.3)
 
-> Status: direction set by the fork owner on 2026-10-24. The code base is upstream ALVR 18.2.3; no Go-specific patches are present yet. This document states where the fork is going, not what the tree currently does.
+> Status: direction set by the fork owner on 2026-10-24. The code base started as upstream ALVR 18.2.3 and now carries Go-specific patches (defaults, controller mapping, stream fixes; see the README). This document states where the fork is going, not only what the tree currently does.
 
 ## Purpose
 
@@ -24,13 +24,13 @@ Quest and Quest 2 users are explicitly not the audience. Their code paths may re
 - **Patch narrowly.** Prefer Go-specific defaults and small client fixes over refactors. Every changed line is a line that has to be re-checked against upstream.
 - **Do not pretend the Go is a Quest.** Do not enable hand tracking, 6DoF controller poses, or refresh rates the device does not report. Surface the device's real capabilities instead.
 - **Keep it open and permissively licensed.** MIT for the project; GPL components remain opt-in build features with notices.
-- **Do not collect data.** Upstream states that ALVR apps do not directly collect data. The GitHub release check remains the only outbound request in the UI.
+- **Do not collect data.** Upstream states that ALVR apps do not directly collect data. The update check was removed, so the fork makes no network requests of its own.
 - **Degrade rather than fail.** Software encoding, UDP/TCP stream choices, optional FEC and adaptive bitrate matter more on a Go-class link than on a Quest 2.
 
 ## Tensions visible in the code and the fork
 
 - **Fixed hardware versus upstream drift.** The Go will not gain new firmware or SDK features. Upstream will keep moving toward newer headsets. Each upstream merge risks pulling in assumptions the Go cannot satisfy, so the fork needs an explicit merge policy.
-- **Go controller mapping versus emulation.** Upstream ships controller presets for Oculus Rift S and Valve Index, and the client has a separate "GearVR or Oculus Go Controller" input path. The fork has to decide whether the Go controller is exposed as a 3DoF controller, emulated as a Rift controller, or left to the user.
+- **Go controller mapping versus emulation.** The Go controller has three inputs, so the fork emulates an Oculus Touch controller by splitting the trackpad into zones (A, grip, menu) and using a long press of the back button for the system button. This makes games usable but is an approximation that needs real-world feedback.
 - **Small screen, deep settings.** The dashboard exposes dozens of advanced controls. On a Go, the useful subset is smaller, but removing settings would fork the schema and break session compatibility.
 - **Quest code in a Go fork.** Leaving Quest paths in place keeps merges cheap but leaves untested code in the release. Removing them shrinks the surface but makes every upstream merge harder.
 - **Openness versus safety.** The old LAN-reachable, unauthenticated web dashboard and its caller-supplied-URL update endpoint are gone with the move to egui. The control and stream sockets are still unauthenticated and unencrypted plain TCP/UDP.
@@ -38,10 +38,10 @@ Quest and Quest 2 users are explicitly not the audience. Their code paths may re
 ## Open questions
 
 - [ ] Which Oculus Go firmware versions must the fork support, and which VrApi build is the floor?
-- [ ] Should the Go controller be exposed as 3DoF, emulated as a Rift S controller, or configurable?
+- [x] Go controller: decided, it is mapped to an Oculus Touch layout with trackpad-edge emulation (see the README). Whether it should also be configurable is open.
 - [ ] Should Quest and Quest 2 flavors be removed from the fork, or kept building but unreleased?
-- [ ] What are the default render resolution, refresh rate and bitrate for a Go-first setup?
+- [ ] Are the current defaults (60 Hz, 25 Mbit/s starting bitrate capped at 50, resolution scale 0.75) right for most setups? They have been tuned on one setup.
 - [ ] Is the fork Windows-first, or must Linux server parity be maintained release by release?
 - [ ] How are upstream 18.2.3 fixes merged after the fork diverges: cherry-pick, periodic rebase, or one-way snapshot?
-- [ ] Does the fork keep the ALVR name and update channel, or rebrand to avoid pulling upstream installers?
+- [x] Name: the repository is ALVR-Go; the update channel was removed, so the fork cannot pull upstream installers. The internal ALVR names remain.
 - [ ] Should the control and stream sockets get authentication or encryption in this fork?

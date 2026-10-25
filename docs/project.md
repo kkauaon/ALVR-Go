@@ -1,10 +1,10 @@
-# Project: ALVR (Air Light VR) 18.2.3
+# Project: ALVR-Go (fork of ALVR 18.2.3)
 
-> Audited from the source tree on 2026-10-24. This copy has no `.git` directory, so history-derived facts (release cadence, authorship, prior decisions) are not available. The version 18.2.3 is declared by every workspace crate and by the Android client (`versionName "18.2.3"`, `versionCode 84`).
+> Audited from the source tree on 2026-10-24 and updated as the fork changed. History lives in git; upstream's release history is not part of this repository. The version 18.2.3 is declared by every workspace crate and by the Android client (`versionName "18.2.3"`, `versionCode 84`).
 
 > **Dependency upgrade and UI migration (2026-10-24).** Every direct Rust dependency was raised to its latest stable release, with one exception: `bincode` 3.0.0 is an empty `compile_error!` tombstone, so the tree uses `bincode` 2.0.1. All host crates (`alvr_launcher`, `alvr_server`, `alvr_audio`, `alvr_sockets`, ...) were ported and pass `cargo check` on Windows. `alvr_client` (Android) is ported to `jni` 0.22, `oboe` 0.6 and `android_logger` 0.15 and builds with Gradle (`gradlew assembleOculusGoStableDebug` succeeded and produced a debug APK; it was not installed on a headset). `cargo check --target aarch64-linux-android` outside Gradle needs the NDK toolchain in `CC_aarch64_linux_android`, `AR_aarch64_linux_android`, `CXX_aarch64_linux_android` and `LIBCLANG_PATH`); the Gradle build and a headset run were not done. The Linux-only crates were not checked.
 
-> **Fork direction.** This tree is the base for a fork of ALVR 18.2.3 aimed only at the Oculus Go. No Go-specific patches exist yet; the build toolchain has been modernized and CI workflows were removed (see Toolchain versions below). The Go-specific entry points that already exist are the `OculusGo` Android flavor, `cargo xtask build-client --oculus-go`, and the client's `VRAPI_DEVICE_TYPE_OCULUSGO` detection.
+> **Fork direction.** This tree is the base for a fork of ALVR 18.2.3 aimed only at the Oculus Go. Go-specific changes so far: Go defaults and a trimmed settings schema, a Go controller mapped to an Oculus Touch layout, and stream robustness fixes (see the README). The build toolchain has been modernized and CI workflows were removed (see Toolchain versions below). The Go-specific entry points that already exist are the `OculusGo` Android flavor, `cargo xtask build-client --oculus-go`, and the client's `VRAPI_DEVICE_TYPE_OCULUSGO` detection.
 
 ALVR streams VR games from a Windows or Linux PC to a standalone Android headset over Wi-Fi. The PC runs an OpenVR driver loaded by SteamVR; the headset runs an Android app that decodes the stream and displays it through Oculus VrApi.
 
@@ -20,7 +20,7 @@ ALVR streams VR games from a Windows or Linux PC to a standalone Android headset
 
 ## Toolchain versions (upgraded 2026-10-24)
 
-ALVR v18.2.3 was published on 2022-05-11 (GitHub release metadata; this copy has no git history). The base tree is 2022-era. On 2026-10-24 the Rust dependency graph and the Android build were upgraded so the tree compiles on Rust 1.99.1, JDK 21 and AGP 9.4.1. CI workflows were removed; all builds are local. The table records the upgraded versions; `Cargo.lock` is the authoritative Rust dependency list.
+ALVR v18.2.3 was published upstream on 2022-05-11. The base tree is 2022-era. On 2026-10-24 the Rust dependency graph and the Android build were upgraded so the tree compiles on Rust 1.99.1, JDK 21 and AGP 9.4.1. CI workflows were removed; all builds are local. The table records the upgraded versions; `Cargo.lock` is the authoritative Rust dependency list.
 
 `targetSdk` stays at the upstream value of 31 to avoid changing Android 12+ runtime behavior. The release lint check for the Play Store target-SDK rule (`ExpiredTargetSdkVersion`) is disabled because ALVR is sideloaded, not distributed through Play.
 

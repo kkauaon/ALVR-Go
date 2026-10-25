@@ -1,23 +1,23 @@
-# ALVR documentation
+# ALVR-Go documentation
 
-Audited source tree: ALVR 18.2.3 (all workspace crates and the Android client report 18.2.3). The tree is the base for a fork aimed only at the Oculus Go; the fork direction is recorded in the docs. No Go-specific behavior changes exist yet, though the build toolchain was upgraded on 2026-10-24. Direct Rust dependencies were also raised to their latest versions on that date and the sources were ported to them, and all desktop UI (launcher and dashboard) now runs on egui; the web dashboard, web server, `druid`, `gtk`, `alcro` and `webbrowser` are removed. The Android client was ported to the upgraded dependencies and passes `cargo check` for Android, but it was not built with Gradle or run on a headset.
+ALVR-Go is a fork of ALVR 18.2.3 aimed only at the Oculus Go (all workspace crates and the Android client still report 18.2.3). It started as a source audit of upstream; the docs were then updated as the fork changed. The fork so far consists of: a modernized build toolchain and dependency graph; all desktop UI (launcher and dashboard) on egui, with the web dashboard, web server, `druid`, `gtk`, `alcro` and `webbrowser` removed; the update system and CI removed; Oculus Go defaults and a trimmed settings schema; a Go controller mapped to an Oculus Touch layout; and stream robustness fixes (adaptive bitrate, AMD AMF, sockets, audio capture, pause/resume on the headset). The Go debug and release APKs build with Gradle and the fork has been run on a Go with a Windows/AMD server; there is no automated end-to-end test.
 
-Before this audit the repository had no project-level documentation. The only Markdown files were the top-level README and short per-crate READMEs under `alvr/`. Those files remain the source of truth for crate-level notes; they are current but very thin.
+The top-level README is the user-facing entry point. The short per-crate READMEs under `alvr/` remain the source of truth for crate-level notes; they are inherited from upstream and thin.
 
 | Doc | Status | Derived from |
 |---|---|---|
-| [project.md](./project.md) | Current; upstream 18.2.3 with an upgraded build toolchain | Workspace manifests, packaging, xtask, filesystem layout, pinned tool versions. |
-| [architecture.md](./architecture.md) | Current, upstream 18.2.3 | Rust and C++ sources on both sides, protocol definitions, dashboard, session model. Go scope noted at the top. |
+| [project.md](./project.md) | Current; ALVR-Go with an upgraded build toolchain | Workspace manifests, packaging, xtask, filesystem layout, pinned tool versions. |
+| [architecture.md](./architecture.md) | Current | Rust and C++ sources on both sides, protocol definitions, dashboard, session model. Go scope noted at the top. |
 | [srs.md](./srs.md) | Draft, needs approval | Observable behavior and defaults in the code, plus the README for platform and network requirements. Go scope added. |
 | [product/vision.md](./product/vision.md) | Direction set, needs ratification | Fork owner's Go-only goal, plus upstream README, platform-specific code, settings surface and license choices. |
 
 ## Known gaps
 
-- No Go-specific patches: the tree is upstream 18.2.3 with no Go-specific behavior changes applied yet. The build toolchain was upgraded on 2026-10-24, and CI workflows were removed; builds are local.
-- No `docs/product/discovery.md`: there is no market or competitive research in the tree, and this audit cannot invent it.
-- The SRS has uniformly TBD priorities. No backlog, roadmap or issue export is present in this copy.
-- The copy has no `.git` directory, so release history, ownership and the rationale behind past decisions are not derivable. The 2022-05-11 release date comes from GitHub release metadata, not from this copy.
-- Server and client behavior is documented from static reading. No end-to-end run was performed against SteamVR or an Oculus Go; the Go debug and release APKs build, but were not installed on a headset.
+- No `docs/product/discovery.md`: there is no market or competitive research in the tree.
+- The SRS has uniformly TBD priorities. No backlog or roadmap exists; use the repository issues for tracking.
+- No CI: workflows were removed, so builds, tests and packaging are local and `cargo xtask publish-*` does not upload anything. No pre-built releases are published yet.
+- Only `alvr_session` has automated tests. Server and client behavior beyond that was verified by running the fork on a Go with a Windows/AMD server; NVIDIA, Intel and Linux servers were not tested in this fork.
+- The Go controller mapping has had limited testing on a real controller.
 
 ## Suggested pipeline
 
