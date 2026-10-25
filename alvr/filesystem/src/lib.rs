@@ -44,10 +44,6 @@ pub fn server_build_dir() -> PathBuf {
     build_dir().join(server_build_dir)
 }
 
-pub fn installer_path() -> PathBuf {
-    env::temp_dir().join(exec_fname("alvr_installer"))
-}
-
 // Layout of the ALVR installation. All paths are absolute
 #[derive(Clone)]
 pub struct Layout {

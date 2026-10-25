@@ -10,7 +10,3 @@ fn invoke_launcher(launcher_path: &Path, flag: &str) -> StrResult {
 pub fn restart_steamvr(launcher_path: &Path) -> StrResult {
     invoke_launcher(launcher_path, "--restart-steamvr")
 }
-
-pub fn invoke_application_update(launcher_path: &Path) -> StrResult {
-    invoke_launcher(launcher_path, "--update")
-}

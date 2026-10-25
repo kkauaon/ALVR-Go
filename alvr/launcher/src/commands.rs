@@ -212,15 +212,3 @@ pub fn restart_steamvr() {
         maybe_launch_steamvr();
     }
 }
-
-pub fn invoke_installer() {
-    try_close_steamvr_gracefully();
-
-    spawn_no_window(Command::new(afs::installer_path()).arg("-q"));
-
-    // delete crash_log.txt (take advantage of the occasion to do some routine cleaning)
-    fs::remove_file(
-        afs::filesystem_layout_from_launcher_exe(&env::current_exe().unwrap()).crash_log(),
-    )
-    .ok();
-}

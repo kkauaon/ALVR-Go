@@ -472,14 +472,6 @@ pub enum Theme {
 
 #[derive(SettingsSchema, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "type", content = "content")]
-pub enum UpdateChannel {
-    NoUpdates,
-    Stable,
-    Nightly,
-}
-
-#[derive(SettingsSchema, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", tag = "type", content = "content")]
 pub enum LogLevel {
     Error,
     Warning,
@@ -494,8 +486,6 @@ pub struct ExtraDesc {
     pub client_dark_mode: bool,
     pub revert_confirm_dialog: bool,
     pub restart_confirm_dialog: bool,
-    pub prompt_before_update: bool,
-    pub update_channel: UpdateChannel,
     pub log_to_disk: bool,
 
     #[schema(advanced)]
@@ -727,16 +717,6 @@ pub fn session_settings_default() -> SettingsDefault {
             client_dark_mode: false,
             revert_confirm_dialog: true,
             restart_confirm_dialog: true,
-            prompt_before_update: true,
-            update_channel: UpdateChannelDefault {
-                variant: if alvr_common::is_stable() && cfg!(windows) {
-                    UpdateChannelDefaultVariant::Stable
-                } else if alvr_common::is_nightly() && cfg!(windows) {
-                    UpdateChannelDefaultVariant::Nightly
-                } else {
-                    UpdateChannelDefaultVariant::NoUpdates
-                },
-            },
             log_to_disk: cfg!(debug_assertions),
             notification_level: LogLevelDefault {
                 variant: if cfg!(debug_assertions) {

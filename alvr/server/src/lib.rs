@@ -5,6 +5,7 @@ mod graphics_info;
 mod logging_backend;
 mod ready_beacon;
 mod settings_editor;
+mod theme;
 
 #[allow(
     non_camel_case_types,
@@ -150,12 +151,6 @@ pub fn notify_restart_driver() {
     notify_shutdown_driver();
 
     alvr_commands::restart_steamvr(&FILESYSTEM_LAYOUT.launcher_exe()).ok();
-}
-
-pub fn notify_application_update() {
-    notify_shutdown_driver();
-
-    alvr_commands::invoke_application_update(&FILESYSTEM_LAYOUT.launcher_exe()).ok();
 }
 
 pub enum ClientListAction {

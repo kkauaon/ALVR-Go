@@ -69,7 +69,7 @@ AGP 9.4.1 is configured with `android.newDsl=false` because `rust-android-gradle
 | `alvr/audio` | Audio device enumeration and selection, game audio capture, microphone playback, Windows device-ID lookup (desktop only: `cpal`/`rodio` are not built for Android, whose CPAL backend needs AAudio, API 26+, while the Go runs Android 7). The sample buffering used by the Android client is always built. |
 | `alvr/filesystem` | Installation layout for Windows, Linux FHS, portable `--root` builds, logs, config and driver paths. |
 | `alvr/commands` | OS integration: OpenVR driver registration, SteamVR detection/restart, firewall rules, launcher helper. |
-| `alvr/launcher` | `ALVR Launcher.exe` / `alvr_launcher`: SteamVR preflight, driver registration, SteamVR launch, update mode. Window is egui (`eframe`). |
+| `alvr/launcher` | `ALVR Launcher.exe` / `alvr_launcher`: SteamVR preflight, driver registration, SteamVR launch. Window is egui (`eframe`). |
 | `alvr/server` | SteamVR driver: Rust lifecycle/networking, egui dashboard window and readiness beacon, plus C++ OpenVR devices, encoders, compositor and rendering. |
 | `alvr/client` | Android client: Rust networking/input plus C++ VrApi rendering, NAL/FEC handling, Java activity and decoder threads. `OculusGo` and `OculusQuest` product flavors; this fork targets `OculusGo`. |
 | `alvr/settings-schema`, `alvr/settings-schema-derive` | Generic JSON-schema model and derive macro used by the settings tree. |
@@ -182,7 +182,6 @@ The launcher registers the driver if needed, starts SteamVR, and then waits unti
 | libclang | Bindgen | Build-time only. bindgen 0.73 needs libclang 9+; 18.1.1 is used locally. |
 | WiX 3.14 | Windows MSI and bundle | Optional; skipped when `WIX` is unset. |
 | `cargo-about` | Third-party license bundle | Installed by `publish-server`. |
-| GitHub Releases | Release downloads | Linked from the About tab; no in-app update. |
 | OS firewall | Inbound access for the driver | `netsh` on Windows, `ufw`/`firewalld` scripts on Linux. |
 
 ## Versioning

@@ -205,7 +205,6 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 ### RF-500.6: Confirmation dialogs
 **Priority:** TBD | **Status:** Draft | **Dependencies:** RF-500.1
 * Restart and settings-revert confirmation dialogs can each be disabled.
-* An update prompt can be disabled so updates download immediately.
 
 ## RF-600: Operations and Lifecycle
 
@@ -248,10 +247,8 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 * The log dispatch level is debug in debug builds and info in release builds.
 
 ### RF-600.7: Updates
-**Priority:** TBD | **Status:** Draft | **Dependencies:** RF-600.1
-* <!-- TBD: in-app update check and download was part of the web dashboard (GitHub Releases API, configurable channel, installer download with progress) and is not ported to egui. The About tab links to the releases page and updates are installed manually. -->
-* The launcher's `--update` mode still closes SteamVR and starts a downloaded installer with `-q`; nothing in the driver triggers it now.
-* <!-- TBD: signature or checksum verification for downloaded installers; none is visible in the source -->
+**Priority:** TBD | **Status:** Removed | **Dependencies:** none
+* The update system was removed from this fork: no update check, channel setting, update prompt, installer download or launcher `--update` mode. New versions are installed manually.
 
 ## RF-700: Packaging and Platform Support
 
@@ -298,7 +295,7 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 ### RF-800.3: Privacy
 **Priority:** TBD | **Status:** Draft | **Dependencies:** none
 * ALVR apps do not directly collect data, per the project README.
-* <!-- TBD: confirm that the update check against the GitHub API is considered acceptable under this statement -->
+* The fork makes no network requests of its own to update servers.
 
 ### RF-800.4: Licensing
 **Priority:** TBD | **Status:** Draft | **Dependencies:** none
@@ -331,7 +328,6 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 - [ ] Which controller identity should the Go controller emulate, given there is no Go preset?
 - [ ] What render resolution, refresh rate and bitrate should a Go-first default use?
 - [ ] Is authenticated or encrypted transport planned? This version has neither. (Dashboard access is no longer a network surface: the egui dashboard runs in the driver process.)
-- [ ] Should in-app updates return in the egui dashboard, and if so, restricted to the project's release hosts with checksum verification?
 - [ ] Which SteamVR versions must the fork support?
 - [ ] What latency and frame-rate targets define "working" on the Go?
 - [ ] Should `session_old.json` and crash logs have a retention or redaction policy?

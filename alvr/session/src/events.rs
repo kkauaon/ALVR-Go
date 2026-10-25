@@ -55,8 +55,6 @@ pub enum ServerEvent {
     ClientFoundWrongVersion(String),
     ClientConnected,
     ClientDisconnected,
-    UpdateDownloadedBytesCount(usize),
-    UpdateDownloadError,
     Statistics(Statistics),
     ServerQuitting,
     Raw(Raw),

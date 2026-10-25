@@ -193,7 +193,6 @@ fn main() {
     let args = env::args().collect::<Vec<_>>();
     match args.get(1) {
         Some(flag) if flag == "--restart-steamvr" => commands::restart_steamvr(),
-        Some(flag) if flag == "--update" => commands::invoke_installer(),
         Some(_) | None => {
             alvr_common::show_err_blocking(make_window());
         }
