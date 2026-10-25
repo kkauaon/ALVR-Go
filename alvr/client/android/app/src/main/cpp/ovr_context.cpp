@@ -9,6 +9,8 @@
 #include <VrApi_Input.h>
 #include <memory>
 #include <chrono>
+#include <cmath>
+#include <algorithm>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 #include <android/input.h>
@@ -51,16 +53,53 @@ const chrono::duration<float> MENU_BUTTON_LONG_PRESS_DURATION = 5s;
 // a back button (the home button belongs to the system), so what a Touch controller has on top
 // of that is emulated:
 //  - trigger: trigger
+//  - finger on the trackpad: thumbstick (with a dead zone in the middle) and thumbstick touch.
+//    Only touching the trackpad never presses a button.
 //  - trackpad click in the middle: A (X on the left hand)
+//  - trackpad click on the top edge: thumbstick click
 //  - trackpad click on the bottom edge: grip (held while the click is held)
-//  - trackpad click on the top edge: menu
-//  - back button, short press: B (Y on the left hand)
-//  - back button, held: system button (opens the SteamVR dashboard)
-const chrono::milliseconds GO_BACK_LONG_PRESS_DURATION = 700ms;
-const chrono::milliseconds GO_BACK_SHORT_PRESS_PULSE = 100ms;
-// Fraction of the trackpad height (0 = top edge) that counts as the top and bottom edges.
-const float GO_TRACKPAD_TOP_EDGE = 0.3f;
-const float GO_TRACKPAD_BOTTOM_EDGE = 0.7f;
+//  - back button, tap: B (Y on the left hand)
+//  - back button, double tap: system button (toggles the SteamVR dashboard)
+// The thumbstick is centered while the trackpad is clicked, so pressing a button does not also
+// move the player.
+//
+// VrApi only reports the back button of the Go for one frame, when a short press (< 0.25 s) is
+// released; holding it is handled by the system and never reaches the app. So the back button
+// can only give taps, and the system button is a double tap.
+const chrono::milliseconds GO_BACK_DOUBLE_TAP_WINDOW = 400ms;
+// Buttons emulated from the back button are sent as a short press: SteamVR toggles the dashboard
+// on a "single" click of the system button, a system button that stays pressed does nothing.
+const chrono::milliseconds GO_BUTTON_PULSE = 100ms;
+// Trackpad edges for the click zones, in thumbstick units (-1 = bottom, +1 = top).
+const float GO_TRACKPAD_EDGE = 0.4f;
+// Thumbstick response, in trackpad radii: nothing under the dead zone, full deflection from the
+// saturation radius on. The finger hardly ever reaches the rim of the round trackpad, so without
+// saturation the thumbstick would never be pushed all the way.
+const float GO_THUMBSTICK_DEAD_ZONE = 0.15f;
+const float GO_THUMBSTICK_SATURATION = 0.85f;
+// The contact flag of the Go trackpad drops out all the time, anywhere on the pad, while the finger
+// stays on it: measured on a real controller, about one drop-out per second, most under 50 ms but
+// many of 70-200 ms with the finger not moving. The position freezes during a drop-out. So the
+// thumbstick keeps its value for GO_TOUCH_HOLD without contact, then fades to zero, and the touch
+// ends after GO_TOUCH_RELEASE_DELAY.
+const chrono::milliseconds GO_TOUCH_HOLD = 100ms;
+const chrono::milliseconds GO_TOUCH_RELEASE_DELAY = 200ms;
+// After a touch that starts on the rim, the sensor can get into a state where the finger is only
+// seen in bursts of 10-60 ms with gaps of up to a few hundred ms, until it recalibrates. Such
+// short contacts switch to longer hold and release times for a while.
+const chrono::milliseconds GO_FLAKY_CONTACT = 80ms;
+const chrono::milliseconds GO_FLAKY_DURATION = 3s;
+const chrono::milliseconds GO_FLAKY_TOUCH_HOLD = 300ms;
+const chrono::milliseconds GO_FLAKY_TOUCH_RELEASE_DELAY = 450ms;
+// A click uses the last position the trackpad reported, if it is at most this old.
+const chrono::milliseconds GO_CLICK_POSITION_MAX_AGE = 3s;
+// When the contact comes back this far (in thumbstick units) from where it was lost, the finger
+// moved during the drop-out: jump to the new position instead of smoothing towards it.
+const float GO_TOUCH_RESUME_JUMP = 0.3f;
+// Longest time a new touch may keep reporting the position where the previous touch ended.
+const chrono::milliseconds GO_STALE_POSITION_TIMEOUT = 30ms;
+// Time constant of the low-pass filter on the trackpad position, removes the sensor jitter.
+const float GO_TRACKPAD_SMOOTHING_S = 0.012f;
 const uint32_t ovrButton_Unknown1 = 0x01000000;
 const int MAXIMUM_TRACKING_FRAMES = 360;
 
@@ -116,14 +155,34 @@ public:
     HapticsState mHapticsState[2]{};
 
 
-    enum class GoTrackpadZone { None, Action, Grip, Menu };
+    enum class GoTrackpadZone { None, Action, ThumbstickClick, Grip };
     struct GoControllerState {
         bool trackpadClickWasDown = false;
         GoTrackpadZone trackpadZone = GoTrackpadZone::None;
+
+        // debounced touch, see GO_TOUCH_RELEASE_DELAY
+        bool touching = false;
+        std::chrono::steady_clock::time_point lastContact;
+        std::chrono::steady_clock::time_point lastSample;
+        // filtered finger position, -1..1 on both axes, +y up
+        float padX = 0.f;
+        float padY = 0.f;
+        // raw position when the finger was last lifted: the first samples of a new touch can
+        // still report it
+        ovrVector2f releasedAt{};
+        bool lastSensorContact = false;
+        std::chrono::steady_clock::time_point contactStartedAt;
+        std::chrono::steady_clock::time_point flakyUntil;
+        std::chrono::steady_clock::time_point touchStartedAt;
+        bool waitingForFreshPosition = false;
+        // thumbstick value sent to the server
+        float stickX = 0.f;
+        float stickY = 0.f;
+
         bool backWasDown = false;
-        bool backLongPressFired = false;
-        std::chrono::steady_clock::time_point backDownAt;
-        std::chrono::steady_clock::time_point backPulseUntil;
+        std::chrono::steady_clock::time_point lastBackTap;
+        std::chrono::steady_clock::time_point secondaryPulseUntil;
+        std::chrono::steady_clock::time_point systemPulseUntil;
     };
     // [0]: left hand, [1]: right hand
     GoControllerState goState[2];
@@ -226,6 +285,99 @@ void destroyNative(void *v_env) {
     env->DeleteGlobalRef(g_ctx.java.ActivityObject);
 }
 
+// Oculus Go: turns the raw trackpad samples into the debounced touch, the filtered finger position
+// and the thumbstick value, see the constants at the top of the file.
+void updateGoTrackpad(OvrContext::GoControllerState &state,
+                      const ovrInputTrackedRemoteCapabilities &caps,
+                      const ovrInputStateTrackedRemote &input,
+                      std::chrono::steady_clock::time_point now) {
+    bool contact = input.TrackpadStatus != 0 || (input.Touches & ovrTouch_TrackPad) != 0;
+    float dt = std::chrono::duration<float>(now - state.lastSample).count();
+    state.lastSample = now;
+
+    // contact back after a drop-out, see GO_TOUCH_HOLD
+    bool resumed = contact && !state.lastSensorContact && state.touching;
+    if (contact && !state.lastSensorContact) {
+        state.contactStartedAt = now;
+    } else if (!contact && state.lastSensorContact &&
+               now - state.contactStartedAt < GO_FLAKY_CONTACT) {
+        state.flakyUntil = now + GO_FLAKY_DURATION;
+    }
+    bool flaky = now < state.flakyUntil;
+    auto hold = flaky ? GO_FLAKY_TOUCH_HOLD : GO_TOUCH_HOLD;
+    auto releaseDelay = flaky ? GO_FLAKY_TOUCH_RELEASE_DELAY : GO_TOUCH_RELEASE_DELAY;
+    state.lastSensorContact = contact;
+
+    bool touchStarted = false;
+    if (contact) {
+        state.lastContact = now;
+        if (!state.touching) {
+            state.touching = true;
+            touchStarted = true;
+            state.waitingForFreshPosition = true;
+            state.touchStartedAt = now;
+        }
+    } else if (state.touching && now - state.lastContact > releaseDelay) {
+        state.touching = false;
+    }
+
+    if (contact) {
+        // A new touch can start with the position where the previous one ended, which would push
+        // the thumbstick in the old direction for a moment.
+        if (state.waitingForFreshPosition &&
+            (input.TrackpadPosition.x != state.releasedAt.x ||
+             input.TrackpadPosition.y != state.releasedAt.y ||
+             now - state.touchStartedAt > GO_STALE_POSITION_TIMEOUT)) {
+            state.waitingForFreshPosition = false;
+            touchStarted = true;
+        }
+        // keep the release position up to date: it is only known once the contact is gone
+        state.releasedAt = input.TrackpadPosition;
+
+        float x, y;
+        if (caps.TrackpadMaxX > 0 && caps.TrackpadMaxY > 0) {
+            x = input.TrackpadPosition.x / caps.TrackpadMaxX * 2.f - 1.f;
+            y = 1.f - input.TrackpadPosition.y / caps.TrackpadMaxY * 2.f;
+        } else {
+            x = input.JoystickNoDeadZone.x;
+            y = input.JoystickNoDeadZone.y;
+        }
+        x = std::max(-1.f, std::min(1.f, x));
+        y = std::max(-1.f, std::min(1.f, y));
+
+        bool jumped = resumed && std::hypot(x - state.padX, y - state.padY) > GO_TOUCH_RESUME_JUMP;
+        if (touchStarted || jumped) {
+            state.padX = x;
+            state.padY = y;
+        } else {
+            float alpha = 1.f - std::exp(-std::max(dt, 0.f) / GO_TRACKPAD_SMOOTHING_S);
+            state.padX += (x - state.padX) * alpha;
+            state.padY += (y - state.padY) * alpha;
+        }
+    }
+
+    bool clicked = (input.Buttons & ovrButton_Enter) != 0;
+    state.stickX = 0.f;
+    state.stickY = 0.f;
+    if (state.touching && !state.waitingForFreshPosition && !clicked) {
+        float radius = std::sqrt(state.padX * state.padX + state.padY * state.padY);
+        if (radius > GO_THUMBSTICK_DEAD_ZONE) {
+            // 0 at the dead zone, 1 at the saturation radius, same direction as the finger
+            float magnitude = std::min(1.f, (radius - GO_THUMBSTICK_DEAD_ZONE) /
+                                            (GO_THUMBSTICK_SATURATION - GO_THUMBSTICK_DEAD_ZONE));
+            // during a drop-out: full value, then a fade to zero until the touch ends
+            auto sinceContact = now - state.lastContact;
+            if (sinceContact > hold) {
+                magnitude *= std::max(0.f, 1.f - std::chrono::duration<float>(
+                                                     sinceContact - hold) /
+                                                     (releaseDelay - hold));
+            }
+            state.stickX = state.padX / radius * magnitude;
+            state.stickY = state.padY / radius * magnitude;
+        }
+    }
+}
+
 uint64_t mapButtons(ovrInputTrackedRemoteCapabilities *remoteCapabilities,
                     ovrInputStateTrackedRemote *remoteInputState) {
     uint64_t buttons = 0;
@@ -297,6 +449,8 @@ uint64_t mapButtons(ovrInputTrackedRemoteCapabilities *remoteCapabilities,
         auto &state = g_ctx.goState[left ? 0 : 1];
         auto now = std::chrono::steady_clock::now();
 
+        updateGoTrackpad(state, *remoteCapabilities, *remoteInputState, now);
+
         // the server reads A/B from the right hand and X/Y from the left one
         const int primaryClick = left ? ALVR_INPUT_X_CLICK : ALVR_INPUT_A_CLICK;
         const int primaryTouch = left ? ALVR_INPUT_X_TOUCH : ALVR_INPUT_A_TOUCH;
@@ -312,11 +466,15 @@ uint64_t mapButtons(ovrInputTrackedRemoteCapabilities *remoteCapabilities,
         // so sliding the finger while pressing does not change the button.
         bool trackpadClick = (remoteInputState->Buttons & ovrButton_Enter) != 0;
         if (trackpadClick && !state.trackpadClickWasDown) {
-            float height = remoteCapabilities->TrackpadMaxY;
-            float y = height > 0.f ? remoteInputState->TrackpadPosition.y / height : 0.5f;
-            if (y < GO_TRACKPAD_TOP_EDGE) {
-                state.trackpadZone = OvrContext::GoTrackpadZone::Menu;
-            } else if (y > GO_TRACKPAD_BOTTOM_EDGE) {
+            // Pressing the trackpad often makes the contact flag drop, sometimes before the click
+            // registers and for the whole click. The position stays frozen where the finger was
+            // last seen, which is where it clicks. Only a click without any recent position is a
+            // middle click.
+            bool positionKnown = now - state.lastContact < GO_CLICK_POSITION_MAX_AGE;
+            float y = positionKnown ? state.padY : 0.f;
+            if (y > GO_TRACKPAD_EDGE) {
+                state.trackpadZone = OvrContext::GoTrackpadZone::ThumbstickClick;
+            } else if (y < -GO_TRACKPAD_EDGE) {
                 state.trackpadZone = OvrContext::GoTrackpadZone::Grip;
             } else {
                 state.trackpadZone = OvrContext::GoTrackpadZone::Action;
@@ -330,45 +488,46 @@ uint64_t mapButtons(ovrInputTrackedRemoteCapabilities *remoteCapabilities,
         switch (state.trackpadZone) {
             case OvrContext::GoTrackpadZone::Action:
                 buttons |= ALVR_BUTTON_FLAG(primaryClick);
+                buttons |= ALVR_BUTTON_FLAG(primaryTouch);
+                break;
+            case OvrContext::GoTrackpadZone::ThumbstickClick:
+                buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_JOYSTICK_CLICK);
                 break;
             case OvrContext::GoTrackpadZone::Grip:
                 buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_GRIP_CLICK);
                 buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_GRIP_TOUCH);
                 break;
-            case OvrContext::GoTrackpadZone::Menu:
-                buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_APPLICATION_MENU_CLICK);
-                break;
             case OvrContext::GoTrackpadZone::None:
                 break;
         }
 
-        // Back button: a short press is a quick press of the secondary button (sent when the
-        // button is released, it cannot be told apart from a long press before that), holding it
-        // is the system button.
+        // The finger on the trackpad is the thumb on the thumbstick. It must not touch A: games
+        // and SteamVR bindings can treat A touch like a press of A.
+        if (state.touching) {
+            buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_JOYSTICK_TOUCH);
+        }
+
+        // Back button, see the comment at the top of the file: the flag is a tap that already
+        // happened. A tap is a short press of the secondary button, a second tap soon after it is
+        // a click of the system button instead.
         bool back = (remoteInputState->Buttons & ovrButton_Back) != 0;
-        if (back) {
-            if (!state.backWasDown) {
-                state.backDownAt = now;
-                state.backLongPressFired = false;
+        if (back && !state.backWasDown) {
+            if (now - state.lastBackTap < GO_BACK_DOUBLE_TAP_WINDOW) {
+                state.systemPulseUntil = now + GO_BUTTON_PULSE;
+                // a third tap starts over
+                state.lastBackTap = {};
+            } else {
+                state.secondaryPulseUntil = now + GO_BUTTON_PULSE;
+                state.lastBackTap = now;
             }
-            if (!state.backLongPressFired && now - state.backDownAt >= GO_BACK_LONG_PRESS_DURATION) {
-                state.backLongPressFired = true;
-            }
-            if (state.backLongPressFired) {
-                buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_SYSTEM_CLICK);
-            }
-        } else if (state.backWasDown && !state.backLongPressFired) {
-            state.backPulseUntil = now + GO_BACK_SHORT_PRESS_PULSE;
         }
         state.backWasDown = back;
-        if (now < state.backPulseUntil) {
+        if (now < state.secondaryPulseUntil) {
             buttons |= ALVR_BUTTON_FLAG(secondaryTouch);
             buttons |= ALVR_BUTTON_FLAG(secondaryClick);
         }
-
-        if (remoteInputState->TrackpadStatus) {
-            buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_TRACKPAD_TOUCH);
-            buttons |= ALVR_BUTTON_FLAG(primaryTouch);
+        if (now < state.systemPulseUntil) {
+            buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_SYSTEM_CLICK);
         }
     }
     return buttons;
@@ -501,7 +660,11 @@ void setControllerInfo(TrackingInfo *packet, double displayTime) {
                 hand_path = LEFT_HAND_PATH;
                 controller = 0;
 
-                if (remoteInputState.Buttons & ovrButton_Enter) {
+                // Menu button of the left Touch controller. On the Go, ovrButton_Enter is the
+                // trackpad click, which can be held for a long time on purpose.
+                bool isTouch = (remoteCapabilities.ControllerCapabilities &
+                                ovrControllerCaps_ModelOculusTouch) != 0;
+                if (isTouch && (remoteInputState.Buttons & ovrButton_Enter)) {
                     if (!g_ctx.mMenuLongPressActivated && std::chrono::system_clock::now()
                                                           - g_ctx.mMenuNotPressedLastInstant >
                                                           MENU_BUTTON_LONG_PRESS_DURATION) {
@@ -541,16 +704,14 @@ void setControllerInfo(TrackingInfo *packet, double displayTime) {
             c.gripValue = remoteInputState.GripTrigger;
 
             if (!(remoteCapabilities.ControllerCapabilities & ovrControllerCaps_ModelOculusTouch)) {
-                // Oculus Go: the grip and menu buttons are emulated with the edges of the trackpad
-                // (see mapButtons()). Pressing there must not also push the thumbstick.
+                // Oculus Go, see mapButtons()
                 if (c.buttons & ALVR_BUTTON_FLAG(ALVR_INPUT_GRIP_CLICK)) {
                     c.gripValue = 1.0f;
                 }
-                if (c.buttons & (ALVR_BUTTON_FLAG(ALVR_INPUT_GRIP_CLICK) |
-                                 ALVR_BUTTON_FLAG(ALVR_INPUT_APPLICATION_MENU_CLICK))) {
-                    c.trackpadPosition.x = 0.f;
-                    c.trackpadPosition.y = 0.f;
-                }
+                // computed by updateGoTrackpad()
+                auto &state = g_ctx.goState[controller];
+                c.trackpadPosition.x = state.stickX;
+                c.trackpadPosition.y = state.stickY;
             }
 
             if (hand_path == LEFT_HAND_PATH) {

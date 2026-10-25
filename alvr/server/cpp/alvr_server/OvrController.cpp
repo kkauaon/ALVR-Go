@@ -614,6 +614,13 @@ vr::HmdQuaternionf_t QuatMultiply(const vr::HmdQuaternionf_t *q1, const vr::HmdQ
     return result;
 }
 
+void OvrController::updateSystemClick(bool pressed) {
+    if (this->object_id == vr::k_unTrackedDeviceIndexInvalid) {
+        return;
+    }
+    vr::VRDriverInput()->UpdateBooleanComponent(m_handles[ALVR_INPUT_SYSTEM_CLICK], pressed, 0.0);
+}
+
 bool OvrController::onPoseUpdate(const TrackingInfo::Controller &c) {
 
     if (this->object_id == vr::k_unTrackedDeviceIndexInvalid) {

@@ -77,6 +77,9 @@ void FECQueue::addVideoPacket(const VideoFrame *packet, int packetSize, bool &fe
 
         m_rs = reed_solomon_new(m_totalDataShards, m_totalParityShards);
         if (m_rs == NULL) {
+            // invalid shard counts: drop the frame, the decoder asks for an IDR frame
+            LOGE("reed_solomon_new failed. shards=%zu:%zu", m_totalDataShards, m_totalParityShards);
+            m_marks.clear();
             return;
         }
 
@@ -135,8 +138,19 @@ void FECQueue::addVideoPacket(const VideoFrame *packet, int packetSize, bool &fe
                  m_currentFrame.videoFrameIndex, m_currentFrame.frameByteSize, m_currentFrame.fecPercentage, m_totalDataShards,
                  m_totalParityShards, m_totalShards, m_shardPackets, m_blockSize);
     }
+    if (m_rs == NULL) {
+        return;
+    }
     size_t shardIndex = packet->fecIndex / m_shardPackets;
     size_t packetIndex = packet->fecIndex % m_shardPackets;
+    int payloadSize = packetSize - (int) sizeof(VideoFrame);
+    // the header comes from the network: never index or copy outside of the frame buffers
+    if (shardIndex >= m_totalShards || payloadSize < 0 ||
+        payloadSize > ALVR_MAX_VIDEO_BUFFER_SIZE) {
+        LOGE("Invalid video packet. fecIndex=%u shards=%zu payloadSize=%d", packet->fecIndex,
+             m_totalShards, payloadSize);
+        return;
+    }
     if (m_marks[packetIndex][shardIndex] == 0) {
         // Duplicate packet.
         LOGI("Packet duplication. packetCounter=%d fecIndex=%d", packet->packetCounter,
@@ -152,7 +166,6 @@ void FECQueue::addVideoPacket(const VideoFrame *packet, int packetSize, bool &fe
 
     std::byte *p = &m_frameBuffer[packet->fecIndex * ALVR_MAX_VIDEO_BUFFER_SIZE];
     char *payload = ((char *) packet) + sizeof(VideoFrame);
-    int payloadSize = packetSize - sizeof(VideoFrame);
     memcpy(p, payload, payloadSize);
     if (payloadSize != ALVR_MAX_VIDEO_BUFFER_SIZE) {
         // Fill padding
@@ -161,7 +174,7 @@ void FECQueue::addVideoPacket(const VideoFrame *packet, int packetSize, bool &fe
 }
 
 bool FECQueue::reconstruct() {
-    if (m_recovered) {
+    if (m_recovered || m_rs == NULL) {
         return false;
     }
 
@@ -178,10 +191,14 @@ bool FECQueue::reconstruct() {
             m_recoveredPacket[packet] = true;
             continue;
         }
-        m_rs->shards = m_receivedDataShards[packet] +
-                       m_receivedParityShards[packet]; //Don't let RS complain about missing parity packets
-
-        if (m_rs->shards < (int) m_totalDataShards) {
+        // m_rs->shards must stay data + parity: reed_solomon_reconstruct() derives the number of
+        // shard groups from it (nr_shards / rs->shards). Setting it to the received count, as
+        // this code used to, made that 2 for a frame of 1 data + 1 parity shard with only the
+        // parity received, and the decoder then read shard pointers past the end of m_shards
+        // (crash on waking the headset, when frames are small and the FEC percentage is high).
+        // Missing parity shards are already handled through the marks.
+        if (m_receivedDataShards[packet] + m_receivedParityShards[packet] <
+            m_totalDataShards) {
             // Not enough parity data
             ret = false;
             continue;

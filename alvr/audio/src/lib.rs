@@ -5,7 +5,13 @@
 use alvr_common::prelude::*;
 use alvr_sockets::StreamReceiver;
 use parking_lot::Mutex;
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+const OVERFLOW_LOG_INTERVAL: Duration = Duration::from_secs(5);
 
 #[cfg(not(target_os = "android"))]
 mod desktop;
@@ -62,6 +68,10 @@ pub async fn receive_samples_loop(
     average_buffer_frames_count: usize,
 ) -> StrResult {
     let mut recovery_sample_buffer = vec![];
+    // overflows are reported at most every OVERFLOW_LOG_INTERVAL, they can happen many times per
+    // second when the player stopped
+    let mut overflow_count = 0;
+    let mut last_overflow_log: Option<Instant> = None;
     loop {
         let packet = receiver.recv().await?;
         let new_samples = packet
@@ -128,7 +138,12 @@ pub async fn receive_samples_loop(
         // todo: use smarter policy with EventTiming
         let buffer_frames_size = sample_buffer_ref.len() / channels_count;
         if buffer_frames_size > 2 * average_buffer_frames_count + batch_frames_count {
-            info!("Audio buffer overflow! size: {buffer_frames_size}");
+            overflow_count += 1;
+            if last_overflow_log.map_or(true, |t| t.elapsed() >= OVERFLOW_LOG_INTERVAL) {
+                info!("Audio buffer overflow ({overflow_count}x)! size: {buffer_frames_size}");
+                overflow_count = 0;
+                last_overflow_log = Some(Instant::now());
+            }
 
             let drained_samples = sample_buffer_ref
                 .drain(0..(buffer_frames_size - average_buffer_frames_count) * channels_count)

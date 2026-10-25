@@ -450,6 +450,15 @@ void OvrHmd::updateController(const TrackingInfo &info) {
     if (info.controller[1].enabled) {
         m_rightController->onPoseUpdate(info.controller[1]);
     }
+
+    // The Oculus Touch input profile only has a system button (the one that toggles the SteamVR
+    // dashboard) on the left controller. When the headset has a single right-handed controller
+    // (Oculus Go), its system button is sent through the left controller.
+    if (!info.controller[0].enabled && info.controller[1].enabled && m_leftController &&
+        (Settings::Instance().m_controllerMode == 1 || Settings::Instance().m_controllerMode == 7)) {
+        m_leftController->updateSystemClick(
+            (info.controller[1].buttons & ALVR_BUTTON_FLAG(ALVR_INPUT_SYSTEM_CLICK)) != 0);
+    }
 }
 
 void OvrHmd::GetWindowBounds(int32_t *pnX, int32_t *pnY, uint32_t *pnWidth, uint32_t *pnHeight) {

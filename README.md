@@ -49,15 +49,19 @@ The Go controller only has a trigger, a clickable trackpad and a back button (it
 | Oculus Go                                    | Seen by SteamVR as                                                 |
 | :------------------------------------------- | :----------------------------------------------------------------- |
 | Trigger                                      | Trigger                                                            |
-| Finger on the trackpad                       | Thumbstick (and A touch)                                           |
+| Finger on the trackpad                       | Thumbstick, with a small dead zone; touching never presses a button |
 | Trackpad click, middle                       | **A** (**X** on the left hand)                                     |
+| Trackpad click, top edge                     | **Thumbstick click**                                               |
 | Trackpad click, bottom edge (hold)           | **Grip**: hold to grab, release to let go                          |
-| Trackpad click, top edge                     | **Menu**                                                           |
-| Back button, short press                     | **B** (**Y** on the left hand), sent when the button is released   |
-| Back button, hold for 0.7 s                  | **System**: opens the SteamVR dashboard                            |
+| Back button, tap                             | **B** (**Y** on the left hand)                                     |
+| Back button, double tap                      | **System**: toggles the SteamVR dashboard                          |
 
--   The part of the trackpad that is clicked is chosen when the click starts and does not change if the finger slides. While the grip or menu edge is pressed the thumbstick is held at zero.  
--   The edges are the top and bottom 30% of the trackpad and the hold time is 0.7 s. They are the constants `GO_TRACKPAD_TOP_EDGE`, `GO_TRACKPAD_BOTTOM_EDGE` and `GO_BACK_LONG_PRESS_DURATION` at the top of `alvr/client/android/app/src/main/cpp/ovr_context.cpp`.  
+-   The thumbstick follows the finger with a dead zone of 15% of the trackpad radius and reaches full deflection at 85% of the radius, since the finger rarely gets to the rim. The position is lightly filtered against sensor jitter, short drop-outs of the touch sensor (under 50 ms) are ignored, and a new touch never reuses the position where the previous one ended.  
+-   The part of the trackpad that is clicked is chosen when the click starts and does not change if the finger slides. While the trackpad is clicked the thumbstick is held at zero, and it returns to zero when the finger leaves the trackpad.  
+-   The Go only tells apps about short presses of the back button (holding it is reserved for the system), which is why the system button is a double tap. The first tap of a double tap is also sent as B.  
+-   SteamVR only has a system button on the left Oculus Touch controller, so the driver sends the system button of a single right-handed Go controller through the left controller.  
+-   The contact sensor of the Go trackpad can get into a state where it only sees the finger in short bursts, typically after a touch that starts on the rim. The client detects it and bridges longer gaps for a few seconds; if the thumbstick still keeps dropping, lift the finger for a few seconds, or take the battery out and put it back to make the controller recalibrate. Clicks use the last position the trackpad reported, because pressing it often makes the contact flag drop.  
+-   All these values are constants (`GO_*`) at the top of `alvr/client/android/app/src/main/cpp/ovr_context.cpp`.  
 -   The mapping has not been validated with extended play on a real controller yet; please report problems.  
 
 ## Troubleshooting

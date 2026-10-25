@@ -159,6 +159,13 @@ impl EventLevel {
     }
 }
 
+/// One point of the statistics graphs.
+struct StatisticsSample {
+    stats: Statistics,
+    // SteamVR render time, averaged from the per-frame graph statistics
+    render_ms: f32,
+}
+
 struct AddClientForm {
     device_name: String,
     hostname: String,
@@ -172,8 +179,10 @@ struct DashboardApp {
     palette: Palette,
     logs: VecDeque<Raw>,
     stats: Statistics,
-    history: VecDeque<Statistics>,
+    history: VecDeque<StatisticsSample>,
     last_statistics: Option<Instant>,
+    render_ms_sum: f64,
+    render_ms_count: u32,
     toasts: Vec<Toast>,
 
     settings: SettingsState,
@@ -199,9 +208,11 @@ impl DashboardApp {
             events,
             palette,
             logs: VecDeque::new(),
-            stats: default_statistics(),
+            stats: Statistics::default(),
             history: VecDeque::new(),
             last_statistics: None,
+            render_ms_sum: 0.0,
+            render_ms_count: 0,
             toasts: Vec::new(),
             settings,
             add_client: None,
@@ -256,8 +267,26 @@ impl DashboardApp {
                             if self.history.len() >= HISTORY_CAPACITY {
                                 self.history.pop_front();
                             }
-                            self.history.push_back(stats.clone());
+                            let render_ms = if self.render_ms_count > 0 {
+                                (self.render_ms_sum / self.render_ms_count as f64) as f32
+                            } else {
+                                0.0
+                            };
+                            self.render_ms_sum = 0.0;
+                            self.render_ms_count = 0;
+                            self.history.push_back(StatisticsSample {
+                                stats: stats.clone(),
+                                render_ms,
+                            });
                             self.stats = stats;
+                        }
+                        ServerEvent::GraphStatistics(values) => {
+                            if let Some(render_ms) = values.get(3) {
+                                if render_ms.is_finite() {
+                                    self.render_ms_sum += render_ms;
+                                    self.render_ms_count += 1;
+                                }
+                            }
                         }
                         ServerEvent::ClientFoundWrongVersion(version) => {
                             self.toast(
@@ -433,19 +462,24 @@ impl DashboardApp {
         let network = self
             .history
             .iter()
-            .map(|s| s.transport_latency)
+            .map(|s| s.stats.transport_latency)
             .collect::<Vec<_>>();
-        let render = vec![0.0; self.history.len()];
+        let render = self
+            .history
+            .iter()
+            .map(|s| s.render_ms)
+            .collect::<Vec<_>>();
         let transcode = self
             .history
             .iter()
-            .map(|s| s.encode_latency + s.decode_latency)
+            .map(|s| s.stats.encode_latency + s.stats.decode_latency)
             .collect::<Vec<_>>();
+        // whatever the total latency is not explained by the other parts
         let idle = self
             .history
             .iter()
-            .zip(network.iter().zip(&transcode))
-            .map(|(s, (n, t))| (s.total_latency - n - t).max(0.0))
+            .zip(network.iter().zip(render.iter().zip(&transcode)))
+            .map(|(s, (n, (r, t)))| (s.stats.total_latency - n - r - t).max(0.0))
             .collect::<Vec<_>>();
         draw_graph(
             ui,
@@ -474,18 +508,18 @@ impl DashboardApp {
             &[
                 (
                     rgb(0x1f, 0x77, 0xb4),
-                    self.history.iter().map(|s| s.server_f_p_s as f32).collect(),
+                    self.history.iter().map(|s| s.stats.server_fps).collect(),
                 ),
                 (
                     rgb(0xff, 0x7f, 0x0e),
-                    self.history.iter().map(|s| s.client_f_p_s as f32).collect(),
+                    self.history.iter().map(|s| s.stats.client_fps).collect(),
                 ),
             ],
         );
 
         ui.add_space(12.0);
         let s = &self.stats;
-        let rows: [(&str, String, Option<String>); 12] = [
+        let rows: [(&str, String, Option<String>); 14] = [
             (
                 "Total Packets",
                 format!("{} Packets", s.total_packets),
@@ -499,28 +533,33 @@ impl DashboardApp {
             (
                 "Total sent",
                 format!("{} MB", s.total_sent),
-                Some(format!("{} Mbps", s.sent_rate)),
+                Some(format!("{:.1} Mbps", s.sent_rate)),
             ),
-            ("Total latency", format!("{} ms", s.total_latency), None),
-            ("Encoder Latency", format!("{} ms", s.encode_latency), None),
+            ("Bitrate", format!("{} Mbps", s.bitrate), None),
+            ("Total latency", format!("{:.1} ms", s.total_latency), None),
+            ("Encoder Latency", format!("{:.1} ms", s.encode_latency), None),
             (
                 "Transport latency",
-                format!("{} ms", s.transport_latency),
+                format!("{:.1} ms", s.transport_latency),
                 None,
             ),
-            ("Decoder latency", format!("{} ms", s.decode_latency), None),
+            ("Decoder latency", format!("{:.1} ms", s.decode_latency), None),
+            ("Ping", format!("{:.1} ms", s.ping), None),
             ("Fec percentage", format!("{} %", s.fec_percentage), None),
             (
                 "Fec failure total",
                 format!("{} Packets", s.fec_failure_total),
                 Some(format!("{} Packets / s", s.fec_failure_in_second)),
             ),
-            ("Client FPS", format!("{} fps", s.client_f_p_s), None),
-            ("Server FPS", format!("{} fps", s.server_f_p_s), None),
+            ("Client FPS", format!("{:.0} fps", s.client_fps), None),
+            ("Server FPS", format!("{:.0} fps", s.server_fps), None),
             (
-                "Encode latency max",
-                format!("{} ms", s.encode_latency_max),
-                None,
+                "Battery",
+                format!("Headset {} %", s.battery_hmd),
+                Some(format!(
+                    "Controllers L {} % / R {} %",
+                    s.battery_left, s.battery_right
+                )),
             ),
         ];
         theme::card_body(ui, &p, |ui| {
@@ -916,27 +955,6 @@ fn form_field(ui: &mut egui::Ui, p: &Palette, label: &str, text: &mut String, he
 
 const fn rgb(r: u8, g: u8, b: u8) -> Color32 {
     Color32::from_rgb(r, g, b)
-}
-
-fn default_statistics() -> Statistics {
-    Statistics {
-        total_packets: 0,
-        packet_rate: 0,
-        packets_lost_total: 0,
-        packets_lost_per_second: 0,
-        total_sent: 0,
-        sent_rate: 0.0,
-        total_latency: 0.0,
-        encode_latency: 0.0,
-        encode_latency_max: 0.0,
-        transport_latency: 0.0,
-        decode_latency: 0.0,
-        fec_percentage: 0,
-        fec_failure_total: 0,
-        fec_failure_in_second: 0,
-        client_f_p_s: 0,
-        server_f_p_s: 0,
-    }
 }
 
 /// Graphs shown in the statistics page. When `stacked`, each series is drawn on top of the

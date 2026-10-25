@@ -156,9 +156,10 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 * The driver presents the headset and controllers to OpenVR with a fixed identity (`alvr_session::go_profile`: Oculus "Miramar" headset, Oculus Touch input profile). None of it is configurable any more.
 * The Go controller is exposed through that Touch profile by the client's Go input path (`mapButtons` in `ovr_context.cpp`):
   * trigger -> trigger;
-  * trackpad position -> thumbstick (while a trackpad edge is clicked the stick is held at zero);
-  * trackpad click in the middle -> A (X on the left hand); on the bottom edge -> grip, held while the click is held; on the top edge -> menu. The zone is chosen when the click starts;
-  * back button, short press -> B (Y on the left hand), sent as a 100 ms press when the button is released; held for 700 ms -> system button (SteamVR dashboard);
+  * trackpad position -> thumbstick and thumbstick touch. Touch is `TrackpadStatus` or `ovrTouch_TrackPad`, and only ends after 50 ms without contact. The position is low-pass filtered (12 ms time constant), a new touch waits up to 30 ms for a position different from the one the previous touch ended on, and the radial response has a 15% dead zone and saturates at 85% of the radius. The thumbstick is zero when the finger is lifted or the trackpad is clicked. Touching the trackpad never sends A touch;
+  * trackpad click in the middle -> A (X on the left hand); on the top edge -> thumbstick click; on the bottom edge -> grip, held while the click is held. The zone is chosen from the filtered position when the click starts;
+  * back button: VrApi only sets `ovrButton_Back` for one frame when a short press (< 0.25 s) is released, long presses belong to the system. A tap -> B (Y on the left hand) as a 100 ms press; a second tap within 400 ms -> a 100 ms press of the system button instead (SteamVR toggles the dashboard on a click, not on a held button). The Oculus Touch profile only has a system button on the left hand, so the driver forwards the system button of a lone right controller to the left controller;
+  * the Quest "hold the left menu button 5 s" shortcut only applies to Touch controllers, on the Go `ovrButton_Enter` is the trackpad click;
   * the home button belongs to the Go's system and never reaches the PC.
 
 ### RF-400.2: Extra tracked devices

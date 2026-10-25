@@ -35,6 +35,8 @@ class OvrController : public TrackedDevice, public vr::ITrackedDeviceServerDrive
     vr::VRInputComponentHandle_t getHapticComponent();
 
     bool onPoseUpdate(const TrackingInfo::Controller &c);
+    // Presses the system button of this controller without touching its pose or other inputs.
+    void updateSystemClick(bool pressed);
     std::string GetSerialNumber();
 
     void GetBoneTransform(bool withController,
