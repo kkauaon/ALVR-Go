@@ -200,7 +200,7 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 **Priority:** TBD | **Status:** Draft | **Dependencies:** none
 * <!-- TBD: the web dashboard had translations (English, Bulgarian, German, Spanish, French, Italian, Japanese, Korean, Dutch, Russian, Slovenian, Chinese); the egui dashboard is English only for now -->
 * The locale can follow the system, and a stored locale overrides it on the next load.
-* Themes are system default, classic and darkly; a separate client dark-mode flag affects the headset UI.
+* The dashboard always uses the dark ("darkly") theme; the theme setting and the classic theme were removed. A separate client dark-mode flag affects the headset UI.
 
 ### RF-500.6: Confirmation dialogs
 **Priority:** TBD | **Status:** Draft | **Dependencies:** RF-500.1

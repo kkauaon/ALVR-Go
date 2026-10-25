@@ -925,7 +925,7 @@ mod tests {
             for tab in 0..5 {
                 editor.set_tab(tab);
                 let mut output = ctx.run_ui(Default::default(), |ui| {
-                    let p = Palette::classic();
+                    let p = Palette::darkly();
                     theme::apply(ui.ctx(), &p);
                     editor.ui(ui, &p, &schema, &mut draft);
                 });

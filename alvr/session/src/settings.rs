@@ -462,14 +462,6 @@ pub struct ConnectionDesc {
     pub enable_fec: bool,
 }
 
-#[derive(SettingsSchema, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", tag = "type", content = "content")]
-pub enum Theme {
-    SystemDefault,
-    Classic,
-    Darkly,
-}
-
 #[derive(SettingsSchema, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "type", content = "content")]
 pub enum LogLevel {
@@ -482,7 +474,6 @@ pub enum LogLevel {
 #[derive(SettingsSchema, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtraDesc {
-    pub theme: Theme,
     pub client_dark_mode: bool,
     pub revert_confirm_dialog: bool,
     pub restart_confirm_dialog: bool,
@@ -711,9 +702,6 @@ pub fn session_settings_default() -> SettingsDefault {
             enable_fec: true,
         },
         extra: ExtraDescDefault {
-            theme: ThemeDefault {
-                variant: ThemeDefaultVariant::SystemDefault,
-            },
             client_dark_mode: false,
             revert_confirm_dialog: true,
             restart_confirm_dialog: true,

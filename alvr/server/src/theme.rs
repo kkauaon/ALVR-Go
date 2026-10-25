@@ -1,20 +1,13 @@
-//! Look of the dashboard. It reproduces the former web dashboard, which used Bootstrap 4.5 with
-//! two variants: the stock "classic" theme and the Bootswatch "darkly" theme.
+//! Look of the dashboard. It reproduces the "darkly" Bootswatch theme (Bootstrap 4.5) of the former
+//! web dashboard.
 
 use eframe::egui::{
     self, Align2, Color32, CornerRadius, FontFamily, FontId, Frame, Margin, Response, RichText,
     Sense, Stroke, TextStyle, Ui, Vec2,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ThemeKind {
-    Classic,
-    Darkly,
-}
-
 #[derive(Clone, Copy)]
 pub struct Palette {
-    pub kind: ThemeKind,
     pub bg: Color32,
     pub text: Color32,
     pub muted: Color32,
@@ -39,36 +32,8 @@ pub struct Palette {
 }
 
 impl Palette {
-    pub fn classic() -> Self {
-        Self {
-            kind: ThemeKind::Classic,
-            bg: Color32::WHITE,
-            text: rgb(0x21, 0x25, 0x29),
-            muted: Color32::GRAY,
-            link: rgb(0x00, 0x7b, 0xff),
-            primary: rgb(0x00, 0x7b, 0xff),
-            primary_hover: rgb(0x00, 0x69, 0xd9),
-            primary_active: rgb(0x00, 0x62, 0xcc),
-            card_bg: Color32::WHITE,
-            card_header: rgb(0xf7, 0xf7, 0xf7),
-            card_border: rgb(0xdf, 0xdf, 0xdf),
-            tab_border: rgb(0xde, 0xe2, 0xe6),
-            tab_active_bg: Color32::WHITE,
-            tab_active_text: rgb(0x49, 0x50, 0x57),
-            tab_hover_border: rgb(0xe9, 0xec, 0xef),
-            input_bg: Color32::WHITE,
-            input_text: rgb(0x49, 0x50, 0x57),
-            sidebar_bg: rgb(0x2e, 0x35, 0x3d),
-            sidebar_text: rgb(0xe1, 0xff, 0xff),
-            sidebar_border: rgb(0x23, 0x28, 0x2e),
-            sidebar_hover: rgb(0x4f, 0x5b, 0x69),
-            table_stripe: rgb(0xf2, 0xf2, 0xf2),
-        }
-    }
-
     pub fn darkly() -> Self {
         Self {
-            kind: ThemeKind::Darkly,
             bg: rgb(0x22, 0x22, 0x22),
             text: Color32::WHITE,
             muted: Color32::GRAY,
@@ -92,13 +57,6 @@ impl Palette {
             table_stripe: rgb(0x2a, 0x2a, 0x2a),
         }
     }
-
-    pub fn of(kind: ThemeKind) -> Self {
-        match kind {
-            ThemeKind::Classic => Self::classic(),
-            ThemeKind::Darkly => Self::darkly(),
-        }
-    }
 }
 
 const fn rgb(r: u8, g: u8, b: u8) -> Color32 {
@@ -111,10 +69,7 @@ pub const RADIUS: u8 = 4;
 pub fn apply(ctx: &egui::Context, p: &Palette) {
     let mut style = (*ctx.global_style()).clone();
 
-    let mut visuals = match p.kind {
-        ThemeKind::Classic => egui::Visuals::light(),
-        ThemeKind::Darkly => egui::Visuals::dark(),
-    };
+    let mut visuals = egui::Visuals::dark();
     visuals.panel_fill = p.bg;
     visuals.window_fill = p.card_bg;
     visuals.window_stroke = Stroke::new(1.0, p.card_border);

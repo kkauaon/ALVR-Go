@@ -1,7 +1,7 @@
 use crate::{
     graphics_info,
     settings_editor::SettingsEditor,
-    theme::{self, Palette, ThemeKind},
+    theme::{self, Palette},
     ClientListAction, FILESYSTEM_LAYOUT, SESSION_MANAGER,
 };
 use alvr_common::{prelude::*, ALVR_VERSION};
@@ -104,19 +104,6 @@ impl SettingsState {
         }
     }
 
-    fn theme_kind(&self, system_dark: bool) -> ThemeKind {
-        match self
-            .draft
-            .pointer("/extra/theme/variant")
-            .and_then(Value::as_str)
-        {
-            Some("classic") => ThemeKind::Classic,
-            Some("darkly") => ThemeKind::Darkly,
-            _ if system_dark => ThemeKind::Darkly,
-            _ => ThemeKind::Classic,
-        }
-    }
-
     fn notification_levels(&self) -> &'static [EventLevel] {
         match self
             .draft
@@ -203,8 +190,7 @@ impl DashboardApp {
         *CONTEXT.lock() = Some(cc.egui_ctx.clone());
 
         let settings = SettingsState::load();
-        let system_dark = cc.egui_ctx.system_theme() == Some(egui::Theme::Dark);
-        let palette = Palette::of(settings.theme_kind(system_dark));
+        let palette = Palette::darkly();
         theme::apply(&cc.egui_ctx, &palette);
 
         Self {
@@ -1061,13 +1047,6 @@ impl eframe::App for DashboardApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.poll_events();
 
-        // theme follows the session setting (or the system when it is "System")
-        let system_dark = ui.ctx().system_theme() == Some(egui::Theme::Dark);
-        let kind = self.settings.theme_kind(system_dark);
-        if kind != self.palette.kind {
-            self.palette = Palette::of(kind);
-            theme::apply(ui.ctx(), &self.palette);
-        }
         let p = self.palette;
 
         self.sidebar(ui);
