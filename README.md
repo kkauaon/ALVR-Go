@@ -36,6 +36,24 @@ This is a fork of [ALVR](https://github.com/polygraphene/ALVR).
 
 Follow the installation guide [here](https://github.com/alvr-org/ALVR/wiki/Installation).
 
+## Oculus Go controller
+
+The Go controller only has a trigger, a clickable trackpad and a back button (its home button belongs to the headset and is never sent to the PC), so the client maps it to an Oculus Touch controller and emulates the missing buttons with the trackpad edges:
+
+| Oculus Go                                    | Seen by SteamVR as                                                 |
+| :------------------------------------------- | :----------------------------------------------------------------- |
+| Trigger                                      | Trigger                                                            |
+| Finger on the trackpad                       | Thumbstick (and A touch)                                           |
+| Trackpad click, middle                       | **A** (**X** on the left hand)                                     |
+| Trackpad click, bottom edge (hold)           | **Grip**: hold to grab, release to let go                          |
+| Trackpad click, top edge                     | **Menu**                                                           |
+| Back button, short press                     | **B** (**Y** on the left hand), sent when the button is released   |
+| Back button, hold for 0.7 s                  | **System**: opens the SteamVR dashboard                            |
+
+-   The part of the trackpad that is clicked is chosen when the click starts and does not change if the finger slides. While the grip or menu edge is pressed the thumbstick is held at zero.  
+-   The edges are the top and bottom 30% of the trackpad and the hold time is 0.7 s. They are the constants `GO_TRACKPAD_TOP_EDGE`, `GO_TRACKPAD_BOTTOM_EDGE` and `GO_BACK_LONG_PRESS_DURATION` at the top of `alvr/client/android/app/src/main/cpp/ovr_context.cpp`.  
+-   The mapping was written from the code and has not been tried on a real controller yet.  
+
 ## Troubleshooting
 
 -   Please check the [Troubleshooting](https://github.com/alvr-org/ALVR/wiki/Troubleshooting) page. The original repository [wiki](https://github.com/polygraphene/ALVR/wiki/Troubleshooting) can also help.  

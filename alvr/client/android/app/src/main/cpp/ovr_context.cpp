@@ -46,6 +46,21 @@ uint64_t LEFT_CONTROLLER_HAPTICS_PATH;
 uint64_t RIGHT_CONTROLLER_HAPTICS_PATH;
 
 const chrono::duration<float> MENU_BUTTON_LONG_PRESS_DURATION = 5s;
+
+// Oculus Go controller -> Oculus Touch layout. The Go only has a trigger, a clickable trackpad and
+// a back button (the home button belongs to the system), so what a Touch controller has on top
+// of that is emulated:
+//  - trigger: trigger
+//  - trackpad click in the middle: A (X on the left hand)
+//  - trackpad click on the bottom edge: grip (held while the click is held)
+//  - trackpad click on the top edge: menu
+//  - back button, short press: B (Y on the left hand)
+//  - back button, held: system button (opens the SteamVR dashboard)
+const chrono::milliseconds GO_BACK_LONG_PRESS_DURATION = 700ms;
+const chrono::milliseconds GO_BACK_SHORT_PRESS_PULSE = 100ms;
+// Fraction of the trackpad height (0 = top edge) that counts as the top and bottom edges.
+const float GO_TRACKPAD_TOP_EDGE = 0.3f;
+const float GO_TRACKPAD_BOTTOM_EDGE = 0.7f;
 const uint32_t ovrButton_Unknown1 = 0x01000000;
 const int MAXIMUM_TRACKING_FRAMES = 360;
 
@@ -100,6 +115,18 @@ public:
     // mHapticsState[1]: left hand state
     HapticsState mHapticsState[2]{};
 
+
+    enum class GoTrackpadZone { None, Action, Grip, Menu };
+    struct GoControllerState {
+        bool trackpadClickWasDown = false;
+        GoTrackpadZone trackpadZone = GoTrackpadZone::None;
+        bool backWasDown = false;
+        bool backLongPressFired = false;
+        std::chrono::steady_clock::time_point backDownAt;
+        std::chrono::steady_clock::time_point backPulseUntil;
+    };
+    // [0]: left hand, [1]: right hand
+    GoControllerState goState[2];
 
     std::chrono::system_clock::time_point mMenuNotPressedLastInstant;
     bool mMenuLongPressActivated = false;
@@ -265,21 +292,83 @@ uint64_t mapButtons(ovrInputTrackedRemoteCapabilities *remoteCapabilities,
             buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_THUMB_REST_TOUCH);
         }
     } else {
-        // GearVR or Oculus Go Controller
+        // GearVR or Oculus Go Controller, see the mapping at the top of the file.
+        bool left = (remoteCapabilities->ControllerCapabilities & ovrControllerCaps_LeftHand) != 0;
+        auto &state = g_ctx.goState[left ? 0 : 1];
+        auto now = std::chrono::steady_clock::now();
+
+        // the server reads A/B from the right hand and X/Y from the left one
+        const int primaryClick = left ? ALVR_INPUT_X_CLICK : ALVR_INPUT_A_CLICK;
+        const int primaryTouch = left ? ALVR_INPUT_X_TOUCH : ALVR_INPUT_A_TOUCH;
+        const int secondaryClick = left ? ALVR_INPUT_Y_CLICK : ALVR_INPUT_B_CLICK;
+        const int secondaryTouch = left ? ALVR_INPUT_Y_TOUCH : ALVR_INPUT_B_TOUCH;
+
         if (remoteInputState->Buttons & ovrButton_A) {
             buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_TRIGGER_TOUCH);
             buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_TRIGGER_CLICK);
         }
-        if (remoteInputState->Buttons & ovrButton_Enter) {
-            buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_A_CLICK);
+
+        // Trackpad click. The zone is chosen when the click starts and kept until it is released,
+        // so sliding the finger while pressing does not change the button.
+        bool trackpadClick = (remoteInputState->Buttons & ovrButton_Enter) != 0;
+        if (trackpadClick && !state.trackpadClickWasDown) {
+            float height = remoteCapabilities->TrackpadMaxY;
+            float y = height > 0.f ? remoteInputState->TrackpadPosition.y / height : 0.5f;
+            if (y < GO_TRACKPAD_TOP_EDGE) {
+                state.trackpadZone = OvrContext::GoTrackpadZone::Menu;
+            } else if (y > GO_TRACKPAD_BOTTOM_EDGE) {
+                state.trackpadZone = OvrContext::GoTrackpadZone::Grip;
+            } else {
+                state.trackpadZone = OvrContext::GoTrackpadZone::Action;
+            }
         }
-        if (remoteInputState->Buttons & ovrButton_Back) {
-            buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_B_TOUCH);
-            buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_B_CLICK);
+        if (!trackpadClick) {
+            state.trackpadZone = OvrContext::GoTrackpadZone::None;
         }
+        state.trackpadClickWasDown = trackpadClick;
+
+        switch (state.trackpadZone) {
+            case OvrContext::GoTrackpadZone::Action:
+                buttons |= ALVR_BUTTON_FLAG(primaryClick);
+                break;
+            case OvrContext::GoTrackpadZone::Grip:
+                buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_GRIP_CLICK);
+                buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_GRIP_TOUCH);
+                break;
+            case OvrContext::GoTrackpadZone::Menu:
+                buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_APPLICATION_MENU_CLICK);
+                break;
+            case OvrContext::GoTrackpadZone::None:
+                break;
+        }
+
+        // Back button: a short press is a quick press of the secondary button (sent when the
+        // button is released, it cannot be told apart from a long press before that), holding it
+        // is the system button.
+        bool back = (remoteInputState->Buttons & ovrButton_Back) != 0;
+        if (back) {
+            if (!state.backWasDown) {
+                state.backDownAt = now;
+                state.backLongPressFired = false;
+            }
+            if (!state.backLongPressFired && now - state.backDownAt >= GO_BACK_LONG_PRESS_DURATION) {
+                state.backLongPressFired = true;
+            }
+            if (state.backLongPressFired) {
+                buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_SYSTEM_CLICK);
+            }
+        } else if (state.backWasDown && !state.backLongPressFired) {
+            state.backPulseUntil = now + GO_BACK_SHORT_PRESS_PULSE;
+        }
+        state.backWasDown = back;
+        if (now < state.backPulseUntil) {
+            buttons |= ALVR_BUTTON_FLAG(secondaryTouch);
+            buttons |= ALVR_BUTTON_FLAG(secondaryClick);
+        }
+
         if (remoteInputState->TrackpadStatus) {
             buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_TRACKPAD_TOUCH);
-            buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_A_TOUCH);
+            buttons |= ALVR_BUTTON_FLAG(primaryTouch);
         }
     }
     return buttons;
@@ -450,6 +539,19 @@ void setControllerInfo(TrackingInfo *packet, double displayTime) {
             }
             c.triggerValue = remoteInputState.IndexTrigger;
             c.gripValue = remoteInputState.GripTrigger;
+
+            if (!(remoteCapabilities.ControllerCapabilities & ovrControllerCaps_ModelOculusTouch)) {
+                // Oculus Go: the grip and menu buttons are emulated with the edges of the trackpad
+                // (see mapButtons()). Pressing there must not also push the thumbstick.
+                if (c.buttons & ALVR_BUTTON_FLAG(ALVR_INPUT_GRIP_CLICK)) {
+                    c.gripValue = 1.0f;
+                }
+                if (c.buttons & (ALVR_BUTTON_FLAG(ALVR_INPUT_GRIP_CLICK) |
+                                 ALVR_BUTTON_FLAG(ALVR_INPUT_APPLICATION_MENU_CLICK))) {
+                    c.trackpadPosition.x = 0.f;
+                    c.trackpadPosition.y = 0.f;
+                }
+            }
 
             if (hand_path == LEFT_HAND_PATH) {
                 if (remoteInputState.BatteryPercentRemaining != g_ctx.lastLeftControllerBattery) {

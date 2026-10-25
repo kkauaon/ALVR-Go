@@ -154,7 +154,12 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 ### RF-400.1: Device identity
 **Priority:** TBD | **Status:** Draft | **Dependencies:** none
 * The driver presents the headset and controllers to OpenVR with a fixed identity (`alvr_session::go_profile`: Oculus "Miramar" headset, Oculus Touch input profile). None of it is configurable any more.
-* The Go controller is exposed through that Touch profile by the client's Go input path.
+* The Go controller is exposed through that Touch profile by the client's Go input path (`mapButtons` in `ovr_context.cpp`):
+  * trigger -> trigger;
+  * trackpad position -> thumbstick (while a trackpad edge is clicked the stick is held at zero);
+  * trackpad click in the middle -> A (X on the left hand); on the bottom edge -> grip, held while the click is held; on the top edge -> menu. The zone is chosen when the click starts;
+  * back button, short press -> B (Y on the left hand), sent as a 100 ms press when the button is released; held for 700 ms -> system button (SteamVR dashboard);
+  * the home button belongs to the Go's system and never reaches the PC.
 
 ### RF-400.2: Extra tracked devices
 **Priority:** TBD | **Status:** Removed | **Dependencies:** RF-400.1
@@ -320,6 +325,7 @@ This fork starts from ALVR 18.2.3 and targets the Oculus Go only. The requiremen
 - [ ] Which requirements are contractual for a release, and what priority scheme should replace the uniform TBD?
 - [ ] Which Oculus Go firmware versions and VrApi builds must the fork support?
 - [ ] Should the Quest and Quest 2 flavors be removed from the fork, or kept buildable but unreleased?
+- [ ] Are the trackpad edge zones (top 30%, bottom 30%) and the 700 ms back-button hold comfortable on a real Go controller? They were not tested on the device.
 - [ ] Is the Oculus Touch / "Miramar" identity the right one for the Go controller, now that it is fixed?
 - [ ] What render resolution, refresh rate and bitrate should a Go-first default use?
 - [ ] Is authenticated or encrypted transport planned? This version has neither. (Dashboard access is no longer a network surface: the egui dashboard runs in the driver process.)
